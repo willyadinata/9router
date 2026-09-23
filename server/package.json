@@ -1,0 +1,16 @@
+{
+  "name": "9router-server",
+  "version": "0.5.85",
+  "description": "9Router Elysia backend (Bun) — replaces the Next.js server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bun run scripts/sync-vendor.ts",
+    "gen-routes": "bun run src/scan.ts",
+    "dev": "bun run sync && bun --hot src/index.ts",
+    "start": "bun run sync && bun src/index.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.4.30"
+  }
+}

@@ -5,6 +5,7 @@ const { showApiKeysMenu } = require("./menus/apiKeys");
 const { showCombosMenu } = require("./menus/combos");
 const { showSettingsMenu } = require("./menus/settings");
 const { showCliToolsMenu } = require("./menus/cliTools");
+const { BRAND_NAME } = require("../constants/brand");
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -67,14 +68,14 @@ async function startTerminalUI(port) {
   // Configure API client
   api.configure({ port });
 
-  const basePath = ["9Router"];
+  const basePath = [BRAND_NAME];
 
   // Prime header cache before first render
   await refreshHeaderBg(port);
 
   // Main menu
   await showMenuWithBack({
-    title: "📡 9Router Terminal UI",
+    title: `📡 ${BRAND_NAME} Terminal UI`,
     breadcrumb: basePath,
     headerContent: () => getHeader(port),
     items: [

@@ -96,6 +96,8 @@ function ensureRuntimeServer(bundledPath) {
 const SERVER_PATH = ensureRuntimeServer(resolveBundledServerPath());
 const ENCRYPT_ALGO = "aes-256-gcm";
 const ENCRYPT_SALT = "9router-mitm-pwd";
+const PWD_KEY_FILE = path.join(MITM_DIR, ".pwd-key");
+let PWD_KEY_CACHE = null;
 
 function getProcessUsingPort443() {
   try {
@@ -151,11 +153,28 @@ function killProcess(pid, force = false, sudoPassword = null) {
   }
 }
 
+// Key material for the stored sudo password. Must survive restarts, and must not come
+// from the machine id (that is per-run now) — so it is a random secret kept next to the
+// other mitm state. Losing this file only means re-entering the sudo password.
 function deriveKey() {
   try {
-    const { machineIdSync } = require("node-machine-id");
-    const raw = machineIdSync();
-    return crypto.createHash("sha256").update(raw + ENCRYPT_SALT).digest();
+    if (!PWD_KEY_CACHE) {
+      try {
+        PWD_KEY_CACHE = fs.readFileSync(PWD_KEY_FILE, "utf-8").trim();
+      } catch {}
+      if (!PWD_KEY_CACHE) {
+        const generated = crypto.randomBytes(32).toString("hex");
+        try {
+          fs.mkdirSync(MITM_DIR, { recursive: true });
+          // "wx": if another process won the race, adopt the value it wrote.
+          fs.writeFileSync(PWD_KEY_FILE, generated, { mode: 0o600, flag: "wx" });
+          PWD_KEY_CACHE = generated;
+        } catch {
+          PWD_KEY_CACHE = fs.readFileSync(PWD_KEY_FILE, "utf-8").trim() || generated;
+        }
+      }
+    }
+    return crypto.createHash("sha256").update(PWD_KEY_CACHE + ENCRYPT_SALT).digest();
   } catch {
     return crypto.createHash("sha256").update(ENCRYPT_SALT).digest();
   }

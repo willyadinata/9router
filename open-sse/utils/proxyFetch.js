@@ -225,7 +225,14 @@ async function getDispatcher(proxyUrl) {
     if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
       proxyDispatchers.delete(proxyDispatchers.keys().next().value);
     }
-    const { ProxyAgent } = await import("undici");
+    // NOTE: never bare-import "undici" here — Bun hijacks it to its builtin.
+    // Socks pools are health-checked and managed but not routable: Bun fetch
+    // has no socks-capable proxy option and SocksProxyAgent is an http.Agent,
+    // not an undici Dispatcher. Fail loudly instead of leaking direct traffic.
+    if (/^socks[45]?h?:/i.test(normalized)) {
+      throw new Error(`Socks proxy not supported for traffic, health-check only: ${normalized}`);
+    }
+    const { ProxyAgent } = await import("../../src/lib/network/undici.js");
     proxyDispatchers.set(normalized, new ProxyAgent({ uri: normalized }));
   }
 

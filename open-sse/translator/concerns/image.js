@@ -13,7 +13,7 @@ export function parseDataUri(url) {
 }
 
 import { lookup } from "node:dns/promises";
-import { Agent } from "undici";
+import { Agent } from "../../../src/lib/network/undici.js";
 import { MAX_IMAGE_BYTES, FETCH_TIMEOUT_MS, IMAGE_SIGNATURES, BLOCKED_HOSTS } from "../../config/mediaConfig.js";
 
 // True if an IPv4/IPv6 address is private/reserved (SSRF target).

@@ -1,84 +1,62 @@
+# 9router+ (Elysia + Bun + Vite) — replaces the Next.js standalone image.
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:22-alpine
-ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
-ARG NPM_REGISTRY=https://registry.npmjs.org/
-ARG APP_VERSION=unknown
-
-FROM ${NODE_IMAGE} AS base
-ARG ALPINE_MIRROR
+ARG BUN_IMAGE=oven/bun:1.4.2-alpine
+FROM ${BUN_IMAGE} AS base
 WORKDIR /app
 
-# Use the official Alpine mirror by default. A repository variable/build arg can
-# override it for environments that require a regional mirror.
-RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
-      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
-    fi
+FROM base AS deps
+# No toolchain: better-sqlite3 is optional (prebuild or skip) — bun:sqlite and
+# sql.js cover the runtime. Keeps the build fast on constrained links.
+COPY package.json ./
+COPY server/package.json server/bun.lock ./server/
+COPY web/package.json web/bun.lock ./web/
+# Runtime image only needs the engine deps — prune Next.js, the React
+# dashboard libs, and unused middleware from the root manifest (versions stay
+# pinned to the root package.json; fresh resolve since the set differs).
+RUN bun -e 'const p = await Bun.file("package.json").json(); const keep = ["@node-saml/node-saml","bcryptjs","chalk","confbox","jose","node-forge","open","ora","socks-proxy-agent","sql.js","undici","uuid"]; p.dependencies = Object.fromEntries(Object.entries(p.dependencies || {}).filter(([k]) => keep.includes(k))); delete p.devDependencies; delete p.optionalDependencies; await Bun.write("package.json", JSON.stringify(p, null, 2));'
+RUN bun install
+RUN cd server && bun install --frozen-lockfile
+RUN cd web && bun install --frozen-lockfile
 
 FROM base AS builder
-ARG NPM_REGISTRY
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/server/node_modules ./server/node_modules
+COPY --from=deps /app/web/node_modules ./web/node_modules
+COPY package.json bun.lock ./
+COPY server ./server
+COPY web ./web
+COPY src ./src
+COPY open-sse ./open-sse
+COPY public ./public
+RUN cd web && bun run build
+RUN cd server && bun run sync
 
-RUN apk add --no-cache python3 make g++ linux-headers
-
-COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install \
-      --registry="${NPM_REGISTRY}" \
-      --fetch-retries=5 \
-      --fetch-retry-factor=2 \
-      --fetch-retry-mintimeout=10000 \
-      --fetch-retry-maxtimeout=120000 \
-      --fetch-timeout=300000
-
-COPY . ./
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
-
-FROM ${NODE_IMAGE} AS runner
-ARG ALPINE_MIRROR
-ARG APP_VERSION
+FROM ${BUN_IMAGE} AS runner
 WORKDIR /app
-
-RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
-      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
-    fi
-
-LABEL org.opencontainers.image.title="9router" \
-      org.opencontainers.image.version="${APP_VERSION}"
 
 ENV NODE_ENV=production
 ENV PORT=20128
 ENV HOSTNAME=0.0.0.0
-ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/custom-server.js ./custom-server.js
-COPY --from=builder /app/open-sse ./open-sse
-# Next file tracing can omit sibling files; MITM runs server.js as a separate process.
-COPY --from=builder /app/src/mitm ./src/mitm
-# Standalone node_modules may omit deps only required by the MITM child process.
-COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
-# Ensure `next` is available at runtime in case tracing did not include it.
-COPY --from=builder /app/node_modules/next ./node_modules/next
-# sql.js loads dist/sql-wasm.wasm by path at runtime; tracing only follows JS imports,
-# so the last-resort DB driver would abort with ENOENT on the missing binary.
-COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
-# node-machine-id is createRequire-loaded at runtime; tracing omits it.
-COPY --from=builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
+COPY package.json jsconfig.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY server/package.json server/bun.lock server/tsconfig.json ./server/
+COPY --from=deps /app/server/node_modules ./server/node_modules
+COPY server/src ./server/src
+COPY server/scripts ./server/scripts
+COPY src ./src
+COPY open-sse ./open-sse
+COPY --from=builder /app/web/dist ./web/dist
+COPY --from=builder /app/server/vendor ./server/vendor
+COPY --from=builder /app/server/src/routes-manifest.ts ./server/src/routes-manifest.ts
 
-RUN mkdir -p /app/data && chown -R node:node /app && \
-  mkdir -p /app/data-home && chown node:node /app/data-home && \
-  ln -sf /app/data-home /root/.9router 2>/dev/null || true
+RUN mkdir -p /app/data /app/data-home && \
+  chown -R bun:bun /app && \
+  ln -sf /app/data-home /home/bun/.9router-plus 2>/dev/null || true
 
-# Avoid a full distribution upgrade in the runtime image. It makes builds less
-# reproducible and is unrelated to installing the runtime entrypoint helper.
-RUN apk add --no-cache su-exec && \
-  printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
-  chmod +x /entrypoint.sh
-
+USER bun
 EXPOSE 20128
 
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["node", "custom-server.js"]
+WORKDIR /app/server
+CMD ["bun", "run", "start"]

@@ -1027,7 +1027,7 @@ docker stop 9router && docker rm 9router
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | 後方互換/公開ベースURL（サーバーランタイムには`BASE_URL`を推奨） |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | 後方互換/公開クラウドURL（サーバーランタイムには`CLOUD_URL`を推奨） |
 | `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | 生成されたAPIキーのHMACシークレット |
-| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | 安定したマシンIDハッシュのソルト |
+| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | 実行ごとのマシンIDハッシュのソルト（IDは起動ごとに再生成されます） |
 | `ENABLE_REQUEST_LOGS` | `false` | `logs/` 配下のリクエスト/レスポンスログを有効化 |
 | `AUTH_COOKIE_SECURE` | `false` | 認証クッキーに`Secure`を強制（HTTPSリバースプロキシの背後では`true`に設定） |
 | `REQUIRE_API_KEY` | `false` | `/v1/*` ルートでBearer APIキーを必須にする（インターネット公開デプロイで推奨） |

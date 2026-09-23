@@ -1,0 +1,8 @@
+node_modules/
+dist/
+src/app/
+src/shared/
+src/store/
+src/i18n/
+src/models/
+public/

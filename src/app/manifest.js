@@ -1,7 +1,9 @@
+import { BRAND_NAME } from "@/shared/constants/brand";
+
 export default function manifest() {
   return {
-    name: '9Router - AI Infrastructure Management',
-    short_name: '9Router',
+    name: `${BRAND_NAME} - AI Infrastructure Management`,
+    short_name: BRAND_NAME,
     description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
     start_url: '/',
     display: 'standalone',

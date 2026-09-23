@@ -1,0 +1,39 @@
+{
+  "name": "9router-web",
+  "version": "0.5.85",
+  "description": "9Router dashboard SPA (pure React + Vite) — replaces the Next.js frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bun run scripts/sync-ui.ts",
+    "dev": "bun run sync && vite --port 20183 --strictPort",
+    "build": "bun run sync && vite build",
+    "preview": "vite preview --port 20183 --strictPort"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@xyflow/react": "^12.10.1",
+    "marked": "^18.0.1",
+    "prop-types": "^15.8.1",
+    "undici": "^7.19.2",
+    "uuid": "^13.0.0",
+    "material-symbols": "^0.44.6",
+    "monaco-editor": "^0.55.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-is": "^16.13.1",
+    "react-router-dom": "^7.9.3",
+    "recharts": "^3.7.0",
+    "zustand": "^5.0.10"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.2.4"
+  }
+}

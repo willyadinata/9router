@@ -3,8 +3,8 @@
 // sql.js is bundled in bin/app already; node:sqlite / bun:sqlite are built-in.
 const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const { DEFAULT_DATA_DIR } = require("../src/cli/constants/brand");
 
 // Gate the pinned version by Node major, mirroring src/lib/db/driver.js gating
 // style: 13.x is N-API and ships per-platform prebuilds inside the package, so
@@ -17,9 +17,7 @@ const SQL_JS_VERSION = "1.14.1";
 
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || os.homedir(), "9router")
-    : path.join(os.homedir(), ".9router");
+  return DEFAULT_DATA_DIR;
 }
 
 function getRuntimeDir() {

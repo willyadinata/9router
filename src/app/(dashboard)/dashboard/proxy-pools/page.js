@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { Badge, Button, Card, CardSkeleton, Input, Modal, Select, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 
 function getStatusVariant(status) {
@@ -51,6 +51,17 @@ export default function ProxyPoolsPage() {
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  const [showFetchModal, setShowFetchModal] = useState(false);
+  const [fetchSource, setFetchSource] = useState(
+    "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text",
+  );
+  const [fetchLimit, setFetchLimit] = useState(200);
+  const [fetchProtocols, setFetchProtocols] = useState({ http: true, https: true, socks4: true, socks5: true });
+  const [fetchStarting, setFetchStarting] = useState(false);
+  const [fetchJob, setFetchJob] = useState(null);
+  const fetchPollRef = useRef(null);
+  const [autoFetch, setAutoFetch] = useState({ enabled: false, intervalHours: 6, lastRunAt: null, lastSummary: "" });
+  const [autoFetchSaving, setAutoFetchSaving] = useState(false);
   const relayMenuRef = useRef(null);
   const notify = useNotificationStore();
 
@@ -558,6 +569,132 @@ export default function ProxyPoolsPage() {
     }
   };
 
+  const openFetchModal = () => {
+    setFetchJob(null);
+    setShowFetchModal(true);
+  };
+
+  const closeFetchModal = () => {
+    if (fetchPollRef.current) {
+      clearInterval(fetchPollRef.current);
+      fetchPollRef.current = null;
+    }
+    setShowFetchModal(false);
+    setFetchJob(null);
+    setFetchStarting(false);
+  };
+
+  const pollFetchJob = (jobId) => {
+    if (fetchPollRef.current) clearInterval(fetchPollRef.current);
+    fetchPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/proxy-pools/fetch/${jobId}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Fetch job failed");
+        setFetchJob(data);
+        if (data.done) {
+          clearInterval(fetchPollRef.current);
+          fetchPollRef.current = null;
+          await fetchProxyPools();
+          if (data.error) {
+            notify.error(`Fetch failed: ${data.error}`);
+          } else if (data.result) {
+            const r = data.result;
+            notify.success(
+              `Fetch completed: +${r.added} added, ${r.keptAlive} kept, ${r.removedDead} dead removed` +
+              (r.disabledBound > 0 ? `, ${r.disabledBound} in-use disabled` : "") +
+              (r.skippedUnsupported > 0 ? `, ${r.skippedUnsupported} unsupported skipped` : ""),
+            );
+          }
+        }
+      } catch (error) {
+        clearInterval(fetchPollRef.current);
+        fetchPollRef.current = null;
+        console.log("Error polling proxy fetch job:", error);
+        notify.error("Fetch job polling failed");
+      }
+    }, 1500);
+  };
+
+  const handleFetchStart = async () => {
+    const limit = Math.min(Math.max(Number(fetchLimit) || 200, 1), 1000);
+    const protocols = Object.entries(fetchProtocols)
+      .filter(([, on]) => on)
+      .map(([name]) => name);
+    if (protocols.length === 0) {
+      notify.warning("Select at least one protocol.");
+      return;
+    }
+    setFetchStarting(true);
+    try {
+      const res = await fetch("/api/proxy-pools/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceUrl: fetchSource.trim(), limit, protocols }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start fetch job");
+      setFetchJob({ jobId: data.jobId, phase: "starting", total: 0, checked: 0, alive: 0, done: false });
+      pollFetchJob(data.jobId);
+    } catch (error) {
+      console.log("Error starting proxy fetch:", error);
+      notify.error(error.message || "Failed to start fetch job");
+      setFetchStarting(false);
+    }
+  };
+
+  const AUTO_FETCH_INTERVALS = [
+    { value: 1, label: "Every hour" },
+    { value: 3, label: "Every 3 hours" },
+    { value: 6, label: "Every 6 hours" },
+    { value: 12, label: "Every 12 hours" },
+    { value: 24, label: "Every day" },
+  ];
+
+  const loadAutoFetch = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.proxyAutoFetch) {
+        setAutoFetch((prev) => ({ ...prev, ...data.proxyAutoFetch }));
+      }
+    } catch (error) {
+      console.log("Error loading auto-fetch settings:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAutoFetch();
+  }, [loadAutoFetch]);
+
+  const saveAutoFetch = async (next) => {
+    const merged = { ...autoFetch, ...next };
+    setAutoFetch(merged);
+    setAutoFetchSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyAutoFetch: merged }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      notify.success(`Auto-fetch ${merged.enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      console.log("Error saving auto-fetch settings:", error);
+      notify.error("Failed to save auto-fetch settings");
+      loadAutoFetch();
+    } finally {
+      setAutoFetchSaving(false);
+    }
+  };
+
+  const formatLastRun = () => {
+    if (!autoFetch.lastRunAt) return "never ran";
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(autoFetch.lastRunAt)) / 60000));
+    const ago = mins < 60 ? `${mins}m ago` : `${Math.round(mins / 60)}h ago`;
+    return `${ago}${autoFetch.lastSummary ? ` · ${autoFetch.lastSummary}` : ""}`;
+  };
+
   const activeCount = useMemo(
     () => proxyPools.filter((pool) => pool.isActive === true).length,
     [proxyPools]
@@ -632,6 +769,9 @@ export default function ProxyPoolsPage() {
           <Button size="sm" variant="secondary" icon="upload" onClick={openBatchImportModal}>
             Batch Import
           </Button>
+          <Button size="sm" variant="secondary" icon="cloud_download" onClick={openFetchModal}>
+            Fetch Free Proxies
+          </Button>
           <Button size="sm" icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
         </div>
       </div>
@@ -651,6 +791,28 @@ export default function ProxyPoolsPage() {
           )}
           <Badge variant="default">Total: {proxyPools.length}</Badge>
           <Badge variant="success">Active: {activeCount}</Badge>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2">
+          <Toggle
+            size="sm"
+            checked={autoFetch.enabled === true}
+            onChange={(checked) => saveAutoFetch({ enabled: checked === true })}
+            label="Auto-fetch"
+            disabled={autoFetchSaving}
+          />
+          <div className="w-40">
+            <Select
+              options={AUTO_FETCH_INTERVALS}
+              value={autoFetch.intervalHours}
+              onChange={(e) => saveAutoFetch({ intervalHours: Number(e.target.value) })}
+              selectClassName="py-1 text-xs"
+              disabled={autoFetchSaving}
+            />
+          </div>
+          <span className="text-xs text-text-muted">
+            Last auto-fetch: {formatLastRun()}
+          </span>
         </div>
 
         {(selectedIds.length > 0 || healthChecking) && (
@@ -802,6 +964,87 @@ export default function ProxyPoolsPage() {
               {importing ? "Importing..." : "Import"}
             </Button>
             <Button fullWidth variant="ghost" onClick={closeBatchImportModal} disabled={importing}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showFetchModal}
+        title="Fetch Free Proxies"
+        onClose={closeFetchModal}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 p-3 flex flex-col gap-1.5">
+            <p className="text-xs text-text-muted">
+              Downloads a free proxy list, health-checks each candidate, then merges the result:
+              live saved proxies are kept, dead ones are removed, and new working proxies are added.
+            </p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-text-main mb-1 block">Protocols</label>
+            <div className="flex flex-wrap gap-3">
+              {["http", "https", "socks4", "socks5"].map((name) => (
+                <label key={name} className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!fetchProtocols[name]}
+                    onChange={(e) => setFetchProtocols((prev) => ({ ...prev, [name]: e.target.checked }))}
+                    className="size-4 rounded border-black/20 dark:border-white/20"
+                    disabled={fetchStarting || !!fetchJob}
+                  />
+                  {name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Input
+            label="Source URL"
+            value={fetchSource}
+            onChange={(e) => setFetchSource(e.target.value)}
+            placeholder="https://api.proxyscrape.com/v4/free-proxy-list/get?..."
+            disabled={fetchStarting || !!fetchJob}
+          />
+          <Input
+            label="Max Candidates"
+            value={String(fetchLimit)}
+            onChange={(e) => setFetchLimit(e.target.value)}
+            placeholder="200"
+            hint="Candidates are shuffled before the cap, 1–1000."
+            disabled={fetchStarting || !!fetchJob}
+          />
+          {fetchJob && (
+            <div className="rounded-lg border border-black/10 dark:border-white/10 px-3 py-2">
+              <p className="text-xs text-text-muted">
+                Phase: <span className="font-medium text-text-main">{fetchJob.phase}</span>
+                {fetchJob.total > 0 && (
+                  <> · Checking {fetchJob.checked}/{fetchJob.total} · alive {fetchJob.alive}</>
+                )}
+              </p>
+              {fetchJob.done && fetchJob.result && (
+                <p className="text-xs text-text-main mt-1">
+                  +{fetchJob.result.added} added · {fetchJob.result.keptAlive} kept · {fetchJob.result.removedDead} dead removed
+                  {fetchJob.result.disabledBound > 0 && <> · {fetchJob.result.disabledBound} in-use disabled</>}
+                  {fetchJob.result.skippedUnsupported > 0 && <> · {fetchJob.result.skippedUnsupported} unsupported skipped</>}
+                </p>
+              )}
+              {fetchJob.done && fetchJob.error && (
+                <p className="text-xs text-red-500 mt-1">{fetchJob.error}</p>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {!fetchJob ? (
+              <Button fullWidth onClick={handleFetchStart} disabled={!fetchSource.trim() || fetchStarting}>
+                {fetchStarting ? "Starting..." : "Start Fetch"}
+              </Button>
+            ) : (
+              <Button fullWidth onClick={closeFetchModal} disabled={!fetchJob.done}>
+                {fetchJob.done ? "Close" : "Checking..."}
+              </Button>
+            )}
+            <Button fullWidth variant="ghost" onClick={closeFetchModal} disabled={fetchStarting && !fetchJob}>
               Cancel
             </Button>
           </div>

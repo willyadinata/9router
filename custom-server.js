@@ -13,6 +13,11 @@ const origCreate = http.createServer.bind(http);
 const PEER_TOKEN = crypto.randomBytes(24).toString("hex");
 process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
 
+// Per-run stand-in for the hardware machine id (64 hex, same shape as node-machine-id).
+// Stamped before Next boots so every worker process inherits one value; instrumentation.js
+// persists it to the data dir so the CLI derives the same x-9r-cli-token.
+process.env.NINEROUTER_MACHINE_ID = crypto.randomBytes(32).toString("hex");
+
 let backgroundRefreshStarted = false;
 
 function startBackgroundTokenRefreshFromCustomServer() {

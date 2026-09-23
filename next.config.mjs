@@ -1,5 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+
+// Per-run machine id for `next dev`, which never loads custom-server.js. config is evaluated
+// before Next spawns any process, so dev workers inherit one value; `||=` leaves the stamp
+// custom-server.js already set for `npm start` / Docker untouched.
+process.env.NINEROUTER_MACHINE_ID ||= randomBytes(32).toString("hex");
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 // CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).

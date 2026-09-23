@@ -1030,7 +1030,7 @@ docker stop 9router && docker rm 9router
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | Обратно совместимый/публичный базовый URL (приоритет `BASE_URL` для серверного рантайма) |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | Обратно совместимый/публичный облачный URL (приоритет `CLOUD_URL` для серверного рантайма) |
 | `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | HMAC-секрет для генерируемых API-ключей |
-| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Соль для стабильного хеширования ID машины |
+| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Соль для хеширования ID машины на каждый запуск (ID создается заново при каждом старте) |
 | `ENABLE_REQUEST_LOGS` | `false` | Включить лог запросов/ответов в `logs/` |
 | `AUTH_COOKIE_SECURE` | `false` | Принудительный `Secure` cookie аутентификации (задайте `true` за HTTPS reverse proxy) |
 | `REQUIRE_API_KEY` | `false` | Требовать Bearer API key на маршрутах `/v1/*` (рекомендуется для развёртываний с выходом в интернет) |

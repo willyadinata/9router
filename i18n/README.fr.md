@@ -1215,7 +1215,7 @@ docker pull decolua/9router:latest   # mise à jour vers la dernière version
 | `NEXT_PUBLIC_BASE_URL`                               | `http://localhost:3000`                     | URL de base publique/rétrocompatible (préférez `BASE_URL` pour le runtime serveur)            |
 | `NEXT_PUBLIC_CLOUD_URL`                              | `https://9router.com`                       | URL cloud publique/rétrocompatible (préférez `CLOUD_URL` pour le runtime serveur)             |
 | `API_KEY_SECRET`                                     | `endpoint-proxy-api-key-secret`             | Secret HMAC pour les clés API générées                                                         |
-| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt`                       | Sel pour le hachage stable de l'ID machine                                                    |
+| `MACHINE_ID_SALT`                                    | `endpoint-proxy-salt`                       | Sel pour le hachage de l'ID machine par exécution (l'ID est régénéré à chaque démarrage) |
 | `ENABLE_REQUEST_LOGS`                                | `false`                                     | Active les journaux de requêtes/réponses dans `logs/`                                         |
 | `AUTH_COOKIE_SECURE`                                 | `false`                                     | Force le cookie d'authentification `Secure` (mettez `true` derrière un proxy inverse HTTPS)   |
 | `REQUIRE_API_KEY`                                    | `false`                                     | Applique la clé API Bearer sur les routes `/v1/*` (recommandé pour les déploiements exposés à Internet) |

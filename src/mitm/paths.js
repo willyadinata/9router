@@ -1,14 +1,17 @@
+// Data directory for the mitm child process (CommonJS, bundled separately by
+// cli/scripts/buildMitm.js) — mirrors src/shared/constants/brand.js, which lives in the
+// ESM app tree and cannot be required from here.
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
-const APP_NAME = "9router";
+const APP_DIR_NAME = "9router-plus";
 
 function defaultDir() {
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_DIR_NAME);
   }
-  return path.join(os.homedir(), `.${APP_NAME}`);
+  return path.join(os.homedir(), `.${APP_DIR_NAME}`);
 }
 
 function getDataDir() {
@@ -19,7 +22,7 @@ function getDataDir() {
     return configured;
   } catch (e) {
     if (e?.code === "EACCES" || e?.code === "EPERM") {
-      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ~/.${APP_NAME}`);
+      console.warn(`[DATA_DIR] '${configured}' not writable → fallback ${defaultDir()}`);
       return defaultDir();
     }
     throw e;

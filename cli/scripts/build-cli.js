@@ -1,38 +1,59 @@
 #!/usr/bin/env node
 
+// Build the CLI `app/` bundle: the Elysia backend (Bun) + the Vite dashboard.
+// Mirrors the Docker runner stage — same files, same layout — so the launcher
+// spawns exactly what production runs. No Next.js involved.
+
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
-const rootDir = path.resolve(appDir, "..");
 const cliAppDir = process.env.NINEROUTER_CLI_APP_DIR || path.join(cliDir, "app");
-const buildHomeDir = path.join(cliDir, ".build-home");
-const buildDistDirName = ".next-cli-build";
-const buildDistDir = path.join(appDir, buildDistDirName);
 
-// Exclude patterns for files/folders we don't want to copy
-const EXCLUDE_PATTERNS = [
-  "@img",           // Sharp image processing (not needed with unoptimized images)
-  "sharp",          // Sharp core lib (not needed with unoptimized images)
-  "detect-libc",    // Sharp dependency
-  ".env",           // Environment files
-  ".env.local",
-  ".env.*.local",
-  "*.log",          // Log files
-  "tmp",            // Temp files
-  ".DS_Store",      // macOS files
+// Root engine deps the Elysia server resolves at runtime (same keep-list as
+// the Dockerfile runner stage — versions stay pinned to the root manifest).
+const ROOT_RUNTIME_DEPS = [
+  "@node-saml/node-saml",
+  "bcryptjs",
+  "chalk",
+  "confbox",
+  "jose",
+  "node-forge",
+  "open",
+  "ora",
+  "socks-proxy-agent",
+  "sql.js",
+  "undici",
+  "uuid",
 ];
 
+// Never copied into the bundle (secrets, caches, VCS, previous builds).
+const EXCLUDE_NAMES = new Set([
+  ".build-home",
+  ".env",
+  ".env.local",
+  ".git",
+  ".next",
+  ".next-cli-build",
+  "node_modules",
+  "*.log",
+  ".DS_Store",
+]);
+
 function shouldExclude(name) {
-  return EXCLUDE_PATTERNS.some(pattern => {
+  for (const pattern of EXCLUDE_NAMES) {
     if (pattern.includes("*")) {
       const regex = new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
-      return regex.test(name);
+      if (regex.test(name)) return true;
+    } else if (name === pattern) {
+      return true;
     }
-    return name === pattern;
-  });
+  }
+  // .env.*.local variants
+  if (name.startsWith(".env.") && name.endsWith(".local")) return true;
+  return false;
 }
 
 function copyRecursive(src, dest) {
@@ -40,7 +61,7 @@ function copyRecursive(src, dest) {
     console.warn(`Warning: Source ${src} does not exist`);
     return;
   }
-  
+
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
   }
@@ -81,248 +102,124 @@ function copyRecursive(src, dest) {
   }
 }
 
-function resolveStandaloneBuild(appDir, buildDistDir) {
-  const legacyStandaloneRoot = path.join(appDir, ".next", "standalone");
-  const resolvedStandaloneRoot = path.join(buildDistDir, "standalone");
-  let standaloneRoot = fs.existsSync(resolvedStandaloneRoot)
-    ? resolvedStandaloneRoot
-    : legacyStandaloneRoot;
-
-  // Next.js 16 nests standalone output under the project name when
-  // NEXT_TRACING_ROOT_MODE=workspace, e.g. standalone/9router/server.js.
-  const pkgName = path.basename(appDir);
-  const nestedRoot = path.join(standaloneRoot, pkgName);
-  if (fs.existsSync(path.join(nestedRoot, "server.js")) && !fs.existsSync(path.join(standaloneRoot, "server.js"))) {
-    console.log(`ℹ️  Detected nested standalone output: ${pkgName}/`);
-    standaloneRoot = nestedRoot;
-  }
-
-  const standaloneApp = fs.existsSync(path.join(standaloneRoot, "server.js"))
-    ? standaloneRoot
-    : path.join(standaloneRoot, "app");
-  if (!fs.existsSync(standaloneApp)) {
+function copyPackageDir(pkgName, destRoot) {
+  const src = path.join(appDir, "node_modules", pkgName);
+  if (!fs.existsSync(src)) {
     throw new Error(
-      "Next.js standalone build not found under .next/standalone; " +
-      "expected either .next/standalone/server.js or .next/standalone/app/",
+      `${pkgName} not found in root node_modules — run 'bun install' at the repo root first.`,
     );
   }
-
-  return { standaloneApp, standaloneRoot };
+  copyRecursive(src, path.join(destRoot, "node_modules", pkgName));
 }
 
-function copyStandaloneBuild(appDir, buildDistDir, cliAppDir) {
-  const { standaloneApp, standaloneRoot } = resolveStandaloneBuild(appDir, buildDistDir);
-  copyRecursive(standaloneApp, cliAppDir);
-
-  // Older nested-app layout stores traced node_modules at standalone root.
-  const standaloneNodeModules = path.join(standaloneRoot, "node_modules");
-  if (standaloneApp !== standaloneRoot && fs.existsSync(standaloneNodeModules)) {
-    copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
-  }
-}
-
-function mergeServerArtifacts(buildDistDir, cliAppDir) {
-  const serverSrc = path.join(buildDistDir, "server");
-  const serverDest = path.join(cliAppDir, buildDistDirName, "server");
-  if (!fs.existsSync(serverSrc)) {
-    throw new Error(`Complete Next.js server build not found: ${serverSrc}`);
-  }
-  copyRecursive(serverSrc, serverDest);
-}
-
-function assertRequiredApiArtifacts(cliAppDir) {
-  const requiredArtifacts = [
-    "app/api/v1/chat/completions/route.js",
-    "app/api/v1/messages/route.js",
+function assertElysiaArtifacts() {
+  const required = [
+    "server/src/index.ts",
+    "server/src/routes-manifest.ts",
+    "server/vendor",
+    "server/tsconfig.json",
+    "package.json",
+    "jsconfig.json",
+    "web/dist/index.html",
   ];
-  const serverDir = path.join(cliAppDir, buildDistDirName, "server");
-  const missingArtifacts = requiredArtifacts
-    .map((artifact) => path.join(serverDir, artifact))
-    .filter((artifact) => !fs.existsSync(artifact));
-
-  if (missingArtifacts.length > 0) {
-    throw new Error(
-      `Required CLI API route artifact${missingArtifacts.length === 1 ? " is" : "s are"} missing:\n` +
-      missingArtifacts.join("\n"),
-    );
+  const missing = required.filter((rel) => !fs.existsSync(path.join(cliAppDir, rel)));
+  if (missing.length > 0) {
+    throw new Error(`Required Elysia bundle artifact${missing.length === 1 ? " is" : "s are"} missing:\n` + missing.join("\n"));
   }
 }
 
 function buildCliPackage() {
-  console.log("📦 Building 9Router CLI package with Next.js...\n");
+  console.log("📦 Building 9Router CLI package (Elysia + Bun)...\n");
 
-  fs.mkdirSync(buildHomeDir, { recursive: true });
-  fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), { recursive: true });
-  fs.mkdirSync(path.join(buildHomeDir, "AppData", "Local"), { recursive: true });
-
-  // Step 0: Sync version from app/cli/package.json to app/package.json
-  console.log("0️⃣  Syncing version to app/package.json...");
+  // Step 0: Sync version from cli/package.json to root package.json
+  console.log("0️⃣  Syncing version to package.json...");
   const cliPkg = JSON.parse(fs.readFileSync(path.join(cliDir, "package.json"), "utf8"));
-  const appPkgPath = path.join(appDir, "package.json");
-  const appPkg = JSON.parse(fs.readFileSync(appPkgPath, "utf8"));
-  if (appPkg.version !== cliPkg.version) {
-    appPkg.version = cliPkg.version;
-    fs.writeFileSync(appPkgPath, JSON.stringify(appPkg, null, 2) + "\n");
+  const rootPkgPath = path.join(appDir, "package.json");
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf8"));
+  if (rootPkg.version !== cliPkg.version) {
+    rootPkg.version = cliPkg.version;
+    fs.writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + "\n");
     console.log(`✅ Version synced: ${cliPkg.version}\n`);
   } else {
     console.log(`✅ Version already synced: ${cliPkg.version}\n`);
   }
 
-  // Step 1: Build app with Next.js (workspace tracing root → traced node_modules in standalone).
-  console.log("1️⃣  Building Next.js app...");
+  // Step 1: Regenerate the vendored API routes + route manifest (build-time,
+  // so the launcher never writes into its own install dir at runtime).
+  console.log("1️⃣  Syncing Elysia vendor routes...");
   try {
-    execSync("npm run build", {
-      stdio: "inherit",
-      cwd: appDir,
-      env: {
-        ...process.env,
-        HOME: buildHomeDir,
-        USERPROFILE: buildHomeDir,
-        APPDATA: path.join(buildHomeDir, "AppData", "Roaming"),
-        LOCALAPPDATA: path.join(buildHomeDir, "AppData", "Local"),
-        NEXT_DIST_DIR: buildDistDirName,
-        NEXT_TRACING_ROOT_MODE: "workspace",
-      }
-    });
-    console.log("✅ Next.js build completed\n");
+    execSync("bun run sync", { stdio: "inherit", cwd: path.join(appDir, "server") });
+    console.log("✅ Vendor routes synced\n");
   } catch (error) {
-    console.error("❌ Next.js build failed");
+    console.error("❌ Server sync failed (is Bun installed? run 'bun install' in server/ first)");
     process.exit(1);
   }
 
-  // Step 2: Clean old app/cli/app if exists
-  console.log("2️⃣  Cleaning old app/cli/app...");
+  // Step 2: Build the dashboard SPA (skipped when web/dist is already fresh —
+  // set NINEROUTER_CLI_SKIP_WEB=1 to skip unconditionally).
+  if (!process.env.NINEROUTER_CLI_SKIP_WEB) {
+    console.log("2️⃣  Building dashboard SPA...");
+    try {
+      execSync("bun run build", { stdio: "inherit", cwd: path.join(appDir, "web") });
+      console.log("✅ Dashboard built\n");
+    } catch (error) {
+      console.error("❌ Web build failed");
+      process.exit(1);
+    }
+  } else {
+    console.log("2️⃣  Skipping dashboard build (NINEROUTER_CLI_SKIP_WEB=1)\n");
+  }
+
+  // Step 3: Clean old cli/app if exists
+  console.log("3️⃣  Cleaning old cli/app...");
   if (fs.existsSync(cliAppDir)) {
     fs.rmSync(cliAppDir, { recursive: true, force: true });
   }
   console.log("✅ Cleaned\n");
 
-  // Step 3: Copy Next.js standalone build to app/cli/app.
-  // Newer Next.js standalone output writes server.js/package.json plus .next/, src/, and
-  // node_modules/ directly under .next/standalone. Older builds may still use a nested app/.
-  console.log("3️⃣  Copying Next.js standalone build to app/cli/app...");
-  try {
-    copyStandaloneBuild(appDir, buildDistDir, cliAppDir);
-  } catch (error) {
-    console.error("❌ Next.js standalone build not found under .next/standalone");
-    console.error("Expected either .next/standalone/server.js or .next/standalone/app/");
-    process.exit(1);
+  // Step 4: Copy the Elysia server tree (mirrors the Dockerfile runner stage).
+  console.log("4️⃣  Copying Elysia server bundle...");
+  for (const rel of ["server/src", "server/scripts", "server/vendor", "src", "open-sse", "web/dist"]) {
+    copyRecursive(path.join(appDir, rel), path.join(cliAppDir, rel));
   }
-  console.log("✅ Copied standalone build\n");
-
-  // Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
-  const customServerSrc = path.join(appDir, "custom-server.js");
-  if (fs.existsSync(customServerSrc)) {
-    fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
-    console.log("✅ Copied custom-server.js\n");
-  } else {
-    console.error("❌ custom-server.js not found — without it no request can be proven local,");
-    console.error("   so the packaged CLI would demand an API key for its own dashboard and /v1.");
-    process.exit(1);
-  }
-
-  // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.
-  // Strip better-sqlite3 (native) — it lives in ~/.9router/runtime to avoid
-  // Windows EBUSY during global CLI updates. node:sqlite (Node ≥22.5) is also
-  // available as a no-install middle tier.
-  console.log("3️⃣ b Configuring SQLite drivers...");
-  function ensureModuleInBundle(pkg) {
-    const dest = path.join(cliAppDir, "node_modules", pkg);
-    if (fs.existsSync(dest)) {
-      console.log(`✅ ${pkg} already bundled`);
-      return;
+  for (const file of ["package.json", "jsconfig.json", "server/package.json", "server/tsconfig.json"]) {
+    const src = path.join(appDir, file);
+    if (!fs.existsSync(src)) {
+      console.error(`❌ Required file missing: ${file}`);
+      process.exit(1);
     }
-    const candidates = [
-      path.join(appDir, "node_modules", pkg),
-      path.join(rootDir, "node_modules", pkg),
-    ];
-    const src = candidates.find((p) => fs.existsSync(p));
-    if (!src) {
-      console.warn(`⚠️  ${pkg} not found locally — bundle will rely on node:sqlite or runtime install`);
-      return;
-    }
+    const dest = path.join(cliAppDir, file);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    copyRecursive(src, dest);
-    console.log(`✅ Bundled ${pkg}`);
+    fs.copyFileSync(src, dest);
   }
-  ensureModuleInBundle("sql.js");
-  // `open` is external (see serverExternalPackages in next.config.mjs), so it must exist in
-  // the bundle's node_modules or every importer throws MODULE_NOT_FOUND at runtime. Output
-  // tracing normally copies it; this is the same belt-and-braces guard used for sql.js.
-  ensureModuleInBundle("open");
+  console.log("✅ Copied server bundle\n");
+
+  // Step 5: Copy pruned runtime node_modules (root engine deps + Elysia).
+  // Native/heavy leftovers (better-sqlite3, next, React dashboard libs) stay
+  // out; sql.js covers SQLite, the data-dir runtime self-heals the rest.
+  console.log("5️⃣  Copying pruned runtime dependencies...");
+  for (const pkg of ROOT_RUNTIME_DEPS) {
+    copyPackageDir(pkg, cliAppDir);
+  }
+  copyRecursive(path.join(appDir, "server", "node_modules"), path.join(cliAppDir, "server", "node_modules"));
   const betterDir = path.join(cliAppDir, "node_modules", "better-sqlite3");
   if (fs.existsSync(betterDir)) {
     fs.rmSync(betterDir, { recursive: true, force: true });
-    console.log("✅ Stripped better-sqlite3 (lives in ~/.9router/runtime)");
+    console.log("✅ Stripped better-sqlite3 (lives in the data dir runtime)");
   }
-  console.log("");
+  console.log("✅ Copied runtime dependencies\n");
 
-  // Step 4: Copy static files
-  console.log("4️⃣  Copying static files...");
-  const staticSrc = path.join(appDir, ".next", "static");
-  const staticSrcResolved = path.join(buildDistDir, "static");
-  const staticDest = path.join(cliAppDir, buildDistDirName, "static");
-  if (fs.existsSync(staticSrcResolved) || fs.existsSync(staticSrc)) {
-    copyRecursive(fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc, staticDest);
-    console.log("✅ Copied static files\n");
-  } else {
-    console.log("⏭️  No static files found\n");
-  }
+  // Step 6: Verify the bundle is launchable.
+  console.log("6️⃣  Verifying bundle artifacts...");
+  assertElysiaArtifacts();
+  console.log("✅ Bundle verified\n");
 
-  // Step 5: Copy public folder if exists
-  console.log("5️⃣  Copying public folder...");
-  const publicSrc = path.join(appDir, "public");
-  const publicDest = path.join(cliAppDir, "public");
-  if (fs.existsSync(publicSrc)) {
-    copyRecursive(publicSrc, publicDest);
-    console.log("✅ Copied public folder\n");
-  } else {
-    console.log("⏭️  No public folder found\n");
-  }
-
-  // Step 6: Copy vendor-chunks (required for production)
-  console.log("6️⃣  Copying vendor-chunks...");
-  const vendorChunksSrc = path.join(appDir, ".next", "server", "vendor-chunks");
-  const vendorChunksSrcResolved = path.join(buildDistDir, "server", "vendor-chunks");
-  const vendorChunksDest = path.join(cliAppDir, buildDistDirName, "server", "vendor-chunks");
-  if (fs.existsSync(vendorChunksSrcResolved) || fs.existsSync(vendorChunksSrc)) {
-    copyRecursive(fs.existsSync(vendorChunksSrcResolved) ? vendorChunksSrcResolved : vendorChunksSrc, vendorChunksDest);
-    console.log("✅ Copied vendor-chunks\n");
-  } else {
-    console.log("⏭️  No vendor-chunks found\n");
-  }
-
-  // Step 6b: Merge the complete generated server tree. Next.js standalone output
-  // is trace-pruned and can omit route modules or chunks loaded dynamically.
-  console.log("6️⃣ b Copying complete server artifacts...");
-  mergeServerArtifacts(buildDistDir, cliAppDir);
-  assertRequiredApiArtifacts(cliAppDir);
-  console.log("✅ Copied complete server artifacts\n");
-
-  // Step 7: Copy MITM server files (not bundled by Next.js standalone)
-  console.log("7️⃣  Copying MITM server files...");
-  const mitmSrc = path.join(appDir, "src", "mitm");
-  const mitmDest = path.join(cliAppDir, "src", "mitm");
-  if (fs.existsSync(mitmSrc)) {
-    copyRecursive(mitmSrc, mitmDest);
-    console.log("✅ Copied MITM files\n");
-  } else {
-    console.log("⏭️  No MITM files found\n");
-  }
-
-  // Step 7b: Copy standalone updater (headless Node process for install progress)
-  console.log("7️⃣ b Copying updater files...");
-  const updaterSrc = path.join(appDir, "src", "lib", "updater");
-  const updaterDest = path.join(cliAppDir, "src", "lib", "updater");
-  if (fs.existsSync(updaterSrc)) {
-    copyRecursive(updaterSrc, updaterDest);
-    console.log("✅ Copied updater files\n");
-  } else {
-    console.log("⏭️  No updater files found\n");
-  }
-
-  // Step 8: Build MITM server (config driven - see app/cli/scripts/buildMitm.js)
-  console.log("8️⃣  Building MITM server...");
+  // Step 7: Build MITM server (config driven - see cli/scripts/buildMitm.js).
+  // buildMitm bundles src/mitm/server.js in place and wipes the other sources,
+  // but the Elysia gateway imports @/mitm/manager et al. — so restore every
+  // source file EXCEPT server.js (nobody imports it as a module; the sidecar
+  // is spawned as a child process and must stay the self-contained bundle).
+  console.log("7️⃣  Building MITM server...");
   try {
     execSync("node scripts/buildMitm.js", { stdio: "inherit", cwd: cliDir });
     console.log("✅ MITM server build completed\n");
@@ -331,12 +228,26 @@ function buildCliPackage() {
     process.exit(1);
   }
 
+  console.log("7️⃣ b Restoring MITM sources needed by the gateway...");
+  {
+    const mitmSrc = path.join(appDir, "src", "mitm");
+    const mitmDest = path.join(cliAppDir, "src", "mitm");
+    const entries = fs.readdirSync(mitmSrc, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === "server.js") continue; // keep the bundle
+      const s = path.join(mitmSrc, entry.name);
+      const d = path.join(mitmDest, entry.name);
+      if (entry.isDirectory()) copyRecursive(s, d);
+      else fs.copyFileSync(s, d);
+    }
+    console.log("✅ MITM sources restored\n");
+  }
+
   console.log("✨ CLI package build completed!");
   console.log(`📁 Output: ${cliAppDir}`);
 
   try {
-    const { execSync: exec } = require("child_process");
-    const size = exec(`du -sh "${cliAppDir}"`, { encoding: "utf8" }).trim();
+    const size = execSync(`du -sh "${cliAppDir}"`, { encoding: "utf8" }).trim();
     console.log(`📊 Package size: ${size.split("\t")[0]}`);
   } catch (e) {
     // Silent fail on size check
@@ -344,9 +255,9 @@ function buildCliPackage() {
 }
 
 module.exports = {
-  assertRequiredApiArtifacts,
-  copyStandaloneBuild,
-  mergeServerArtifacts,
+  assertElysiaArtifacts,
+  copyPackageDir,
+  ROOT_RUNTIME_DEPS,
 };
 
 if (require.main === module) {

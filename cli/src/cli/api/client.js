@@ -3,8 +3,7 @@ const https = require("https");
 const crypto = require("crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
-const { machineIdSync } = require("node-machine-id");
+const { DEFAULT_DATA_DIR } = require("../constants/brand");
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -15,14 +14,9 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const APP_NAME = "9router";
-
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
-  }
-  return path.join(os.homedir(), `.${APP_NAME}`);
+  return DEFAULT_DATA_DIR;
 }
 
 const MACHINE_ID_FILE = path.join(getDataDir(), "machine-id");
@@ -31,15 +25,21 @@ const CLI_SECRET_FILE = path.join(AUTH_DIR, "cli-secret");
 
 let config = { ...DEFAULT_CONFIG };
 let cachedCliToken = null;
+let cachedTokenRaw = null;
 let cachedCliSecret = null;
+let fallbackRawId = null;
 
-// Read raw machineId from shared file (written by server) → guarantees token match
+// Read raw machineId from the shared file the server writes on every start → token match.
+// Never cached across calls: the server rewrites this file each run, and a long-lived CLI
+// process (tray, TUI menu) must not keep presenting the previous run's token.
 function loadRawMachineId() {
   try {
     const raw = fs.readFileSync(MACHINE_ID_FILE, "utf8").trim();
     if (raw) return raw;
   } catch {}
-  try { return machineIdSync(); } catch { return ""; }
+  if (process.env.NINEROUTER_MACHINE_ID) return process.env.NINEROUTER_MACHINE_ID;
+  if (!fallbackRawId) fallbackRawId = crypto.randomBytes(32).toString("hex");
+  return fallbackRawId;
 }
 
 // Random secret shared with server via file → token unpredictable from machineId alone.
@@ -58,10 +58,12 @@ function loadCliSecret() {
 }
 
 function getCliToken() {
-  if (cachedCliToken !== null) return cachedCliToken;
   const raw = loadRawMachineId();
+  // Cache keyed on the raw id, so a server restart (new machine-id file) re-derives the token.
+  if (cachedCliToken !== null && cachedTokenRaw === raw) return cachedCliToken;
   const secret = loadCliSecret();
   cachedCliToken = raw ? crypto.createHash("sha256").update(raw + CLI_TOKEN_SALT + secret).digest("hex").substring(0, 16) : "";
+  cachedTokenRaw = raw;
   return cachedCliToken;
 }
 
