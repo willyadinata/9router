@@ -4,10 +4,10 @@
 SHELL := /bin/bash
 PORT ?= 20128
 HOSTNAME ?= 127.0.0.1
-DATA_DIR ?= $(HOME)/.9router-plus
+DATA_DIR ?= $(HOME)/.9router
 TEST_PORT ?= 20145
-IMAGE ?= 9router-plus:elysia
-CONTAINER ?= 9router-plus
+IMAGE ?= 9router:elysia
+CONTAINER ?= 9router
 
 # Sandbox for smoke tests — never touches the live gateway or real data dir.
 SMOKE_HOME ?= /tmp/9r-smoke/home

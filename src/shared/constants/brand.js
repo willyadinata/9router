@@ -1,4 +1,4 @@
-// Branch-local identity for the 9router-plus build.
+// Branch-local identity for the 9router build.
 //
 // Display name and data directory only. Functional identifiers deliberately stay on
 // "9router": the x-9r-* headers, the `model_providers.9router` / `custom:9Router-0` config
@@ -6,6 +6,6 @@
 // (updates still install the published `9router` package).
 export const BRAND_NAME = "9router+";
 
-// Data directory name. Hidden on unix (~/.9router-plus) and plain under %APPDATA% on
+// Data directory name. Hidden on unix (~/.9router) and plain under %APPDATA% on
 // Windows, mirroring the upstream convention, so this branch never touches ~/.9router.
-export const APP_DIR_NAME = "9router-plus";
+export const APP_DIR_NAME = "9router";

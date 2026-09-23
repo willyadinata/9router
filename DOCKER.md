@@ -22,22 +22,22 @@ App listens on port `20128`. Open: http://localhost:20128
 ## Manage
 
 ```bash
-docker logs -f 9router-plus     # view logs
+docker logs -f 9router     # view logs
 docker compose stop             # stop
 docker compose up -d            # start again
-docker compose down             # remove (data kept in the 9router-plus-data volume)
+docker compose down             # remove (data kept in the 9router-data volume)
 ```
 
 ## Data persistence
 
 ```bash
 volumes:
-  - 9router-plus-data:/app/data
+  - 9router-data:/app/data
 environment:
   DATA_DIR: /app/data
 ```
 
-Without `DATA_DIR`, the app falls back to `~/.9router-plus/` (this branch never
+Without `DATA_DIR`, the app falls back to `~/.9router/` (this branch never
 touches the original `~/.9router/`). In the container, `DATA_DIR=/app/data`
 makes the named volume work.
 
@@ -56,14 +56,14 @@ $DATA_DIR/
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v 9router-plus-data:/app/data \
+  -v 9router-data:/app/data \
   -e DATA_DIR=/app/data \
   -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e JWT_SECRET=change-me-to-a-long-random-secret \
   -e INITIAL_PASSWORD=change-me \
-  --name 9router-plus \
-  9router-plus:elysia
+  --name 9router \
+  9router:elysia
 ```
 
 ## Optional Headroom sidecar
@@ -119,13 +119,13 @@ cd web && bun run sync      # UI copy + next/* codemod
 ## Build image locally (test)
 
 ```bash
-docker build -t 9router-plus:elysia .
+docker build -t 9router:elysia .
 
 docker run --rm -p 20145:20128 \
   -e DATA_DIR=/app/data \
   -e JWT_SECRET=test-secret-0123456789abcdef \
   -e INITIAL_PASSWORD=testpass123 \
-  9router-plus:elysia
+  9router:elysia
 ```
 
 Then: `curl localhost:20145/api/health` → `{"ok":true}`, and open

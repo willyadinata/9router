@@ -52,8 +52,8 @@ COPY --from=builder /app/server/vendor ./server/vendor
 COPY --from=builder /app/server/src/routes-manifest.ts ./server/src/routes-manifest.ts
 
 RUN mkdir -p /app/data /app/data-home && \
-  chown -R bun:bun /app && \
-  ln -sf /app/data-home /home/bun/.9router-plus 2>/dev/null || true
+    chown -R bun:bun /app && \
+    ln -sf /app/data-home /home/bun/.9router 2>/dev/null || true
 
 USER bun
 EXPOSE 20128

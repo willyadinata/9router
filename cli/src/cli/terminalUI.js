@@ -5,7 +5,7 @@ const { showApiKeysMenu } = require("./menus/apiKeys");
 const { showCombosMenu } = require("./menus/combos");
 const { showSettingsMenu } = require("./menus/settings");
 const { showCliToolsMenu } = require("./menus/cliTools");
-const { BRAND_NAME } = require("../constants/brand");
+const { BRAND_NAME } = require("./constants/brand");
 
 const COLORS = {
   reset: "\x1b[0m",
