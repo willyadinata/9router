@@ -1,32 +1,22 @@
-# VCS
-.git
-**/.git
-
-# Editor
-.vscode
-**/.vscode
-
-# Dependencies and build output
 node_modules
 .next
-out
-build
-dist
-coverage
-
-# Runtime data and logs
+.next-cli-build
+server/node_modules
+server/vendor
+server/src/routes-manifest.ts
+web/node_modules
+web/dist
+web/src/app
+web/src/shared
+web/src/store
+web/src/i18n
+web/src/models
+web/public
 data
-logs
-
-# Local env files (inject at runtime via --env-file or -e)
+*.log
+.git
+.gitignore
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+cli/node_modules
+tests/node_modules
