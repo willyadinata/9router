@@ -18,6 +18,11 @@ await mkdir(join(VENDOR, "app"), { recursive: true });
 await cp(join(ROOT, "src", "app", "api"), join(VENDOR, "app", "api"), { recursive: true });
 // 2. Auth guard (imports next/server like the routes do)
 await cp(join(ROOT, "src", "dashboardGuard.js"), join(VENDOR, "dashboardGuard.js"));
+// NOTE: src/lib/mimoLoginSession.js is deliberately NOT vendored. It has zero
+// next/* imports, so the vendored login routes resolve @/lib/mimoLoginSession
+// to the live copy via server/tsconfig paths — and the live location keeps its
+// relative open-sse imports (../../open-sse/*) correct. A vendored copy would
+// break those (vendor/lib/../../open-sse = server/open-sse, missing).
 
 // 2b. Vendored routes import "@/dashboardGuard", which would resolve to the
 // LIVE src/ copy outside server/ (nearest-config trap: real next/server).
@@ -51,6 +56,7 @@ if (serverPkg.version !== rootPkg.version) {
 }
 
 console.log("vendor synced: app/api + dashboardGuard.js");
+console.log("note: mimoLoginSession.js stays live (zero next/* imports; keeps its open-sse relatives)");
 
 // 4. regenerate the manifest from the vendored tree
 await import("../src/scan.ts");
