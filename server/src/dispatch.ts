@@ -109,12 +109,66 @@ function guardApplies(pathname: string) {
 }
 
 let guardMod: any = null;
-export async function runGuard(request: NextRequest): Promise<Response | null> {
+async function loadGuard() {
   if (!guardMod) guardMod = await import("../vendor/dashboardGuard.js");
+  return guardMod;
+}
+export async function runGuard(request: NextRequest): Promise<Response | null> {
+  const guard = await loadGuard();
   if (!guardApplies(new URL(request.url).pathname)) return null;
-  const out = await guardMod.proxy(request);
+  const out = await guard.proxy(request);
   if (out && (out as any)[NEXT_NEXT]) return null; // NextResponse.next() -> continue
   return out ?? null;
+}
+
+// ---- xiaomi mimo login proxy branch (parity with src/proxy.js) ----
+// The Next middleware (src/proxy.js) is dead on Elysia — dispatch replaces it.
+// This ports its mimo branch 1:1: session state rides the httpOnly
+// 9r_mimo_login cookie; the branch requires dashboard auth so a forged
+// cookie never turns the app into an unauthenticated forwarder.
+let mimoMod: any = null;
+async function loadMimo() {
+  // Live src/ copy, NOT vendored: zero next/* imports (runs on the shimmed
+  // NextRequest), and its relative open-sse imports only resolve from src/lib/.
+  if (!mimoMod) mimoMod = await import("../../src/lib/mimoLoginSession.js");
+  return mimoMod;
+}
+
+function withClearedMimoSession(res: Response, sessionCookie: string): Response {
+  const headers = new Headers(res.headers);
+  headers.append("Set-Cookie", `${sessionCookie}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/** Returns a Response when the mimo branch handles the request, else null. */
+export async function runMimoLoginProxy(request: NextRequest): Promise<Response | null> {
+  const mimo = await loadMimo();
+  const cookies = request.headers.get("cookie") || "";
+  if (!cookies.includes(`${mimo.SESSION_COOKIE}=`)) return null;
+  const guard = await loadGuard();
+  const url = new URL(request.url);
+  if (!(await guard.isAuthenticated(request))) {
+    // Forged or stale session cookie without dashboard auth — drop it early.
+    return withClearedMimoSession(await guard.proxy(request), mimo.SESSION_COOKIE);
+  }
+  const sess = mimo.sessionFromRequest(request);
+  if (sess) {
+    const origin = mimo.originOf(request);
+    try {
+      if (mimo.isMimoTakeoverPath(url.pathname)) {
+        const upstreamUrl = `${sess.upstreamBase}${mimo.takeoverUpstreamPath(url.pathname)}${url.search || ""}`;
+        return mimo.attachSessionCookie(await mimo.runTakeover(sess, upstreamUrl, origin), sess);
+      }
+      if (mimo.isAccountProxyPath(url.pathname)) {
+        return mimo.attachSessionCookie(await mimo.proxyAccountRequest(sess, request, origin), sess);
+      }
+    } catch (e: any) {
+      console.log(`${new Date().toISOString().slice(11, 23)} [mimo-login] proxy error:`, e?.message || e);
+      return new Response("mimo login proxy error", { status: 502 });
+    }
+  }
+  // Cookie present but expired/invalid — clear it on the way past.
+  return withClearedMimoSession(await guard.proxy(request), mimo.SESSION_COOKIE);
 }
 
 // ---- main entry ----
@@ -153,6 +207,9 @@ export async function dispatch(original: Request, opts: DispatchOpts): Promise<R
   const request = stampRequest(original, opts.clientIp);
 
   return runWithRequest(request, async () => {
+    const mimoRes = await runMimoLoginProxy(request);
+    if (mimoRes) return mergeJarCookies(mimoRes);
+
     const guardRes = await runGuard(request);
     if (guardRes) return mergeJarCookies(guardRes);
 
