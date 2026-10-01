@@ -15,9 +15,10 @@ const { afterEach, describe, it } = testApi;
 
 const require = createRequire(import.meta.url);
 const {
-  assertRequiredApiArtifacts,
-  copyStandaloneBuild,
-  mergeServerArtifacts,
+  assertRuntimeClosure,
+  collectRuntimeClosure,
+  copyPackageDir,
+  copyRuntimeClosure,
 } = require("../../cli/scripts/build-cli.js");
 
 const tempDirs = [];
@@ -35,13 +36,28 @@ function writeFixture(root, relativePath, contents = relativePath) {
   return filePath;
 }
 
-function createCompleteServer(buildDistDir) {
-  const serverDir = path.join(buildDistDir, "server");
-  writeFixture(serverDir, "app/api/v1/chat/completions/route.js", "chat route");
-  writeFixture(serverDir, "app/api/v1/messages/route.js", "messages route");
-  writeFixture(serverDir, "chunks/openai-provider.js", "openai chunk");
-  writeFixture(serverDir, "chunks/anthropic-provider.js", "anthropic chunk");
-  return serverDir;
+// Fake a hoisted node_modules: every package (roots + transitives) lives
+// flat at top level, like npm/bun hoisting produces for the real install.
+function writePkg(nmDir, name, dependencies = {}) {
+  writeFixture(
+    nmDir,
+    path.join(name, "package.json"),
+    JSON.stringify({ name, version: "1.0.0", main: "index.js", dependencies }),
+  );
+  // Realistic entry point: actually requires its declared deps, so
+  // require.resolve-based checks behave like the production bundle.
+  const requires = Object.keys(dependencies)
+    .map((dep) => `require(${JSON.stringify(dep)});`)
+    .join("\n");
+  writeFixture(nmDir, path.join(name, "index.js"), `${requires}\nmodule.exports = {};\n`);
+}
+
+function createHoistedNm(root, tree) {
+  const nmDir = path.join(root, "node_modules");
+  for (const [name, deps] of Object.entries(tree)) {
+    writePkg(nmDir, name, deps);
+  }
+  return nmDir;
 }
 
 afterEach(() => {
@@ -50,92 +66,111 @@ afterEach(() => {
   }
 });
 
-describe("CLI build server artifacts", () => {
-  for (const { name, standalonePath } of [
-    {
-      name: "legacy nested app",
-      standalonePath: (appDir, buildDistDir) => path.join(appDir, ".next", "standalone", "app"),
-    },
-    {
-      name: "Next 16 workspace",
-      standalonePath: (appDir, buildDistDir) => path.join(buildDistDir, "standalone", path.basename(appDir)),
-    },
-  ]) {
-    it(`merges complete API routes and provider chunks for the ${name} layout`, () => {
-      const root = createTempDir();
-      const appDir = path.join(root, "9router");
-      const buildDistDir = path.join(appDir, ".next-cli-build");
-      const cliAppDir = path.join(root, "cli-app");
-      const standaloneDir = standalonePath(appDir, buildDistDir);
-
-      writeFixture(standaloneDir, "server.js", "standalone server");
-      writeFixture(
-        standaloneDir,
-        ".next-cli-build/server/app/api/v1/chat/completions/route.js",
-        "standalone chat route",
-      );
-      createCompleteServer(buildDistDir);
-
-      copyStandaloneBuild(appDir, buildDistDir, cliAppDir);
-      mergeServerArtifacts(buildDistDir, cliAppDir);
-      assertRequiredApiArtifacts(cliAppDir);
-
-      const packagedServer = path.join(cliAppDir, ".next-cli-build", "server");
-      assert.equal(
-        fs.readFileSync(path.join(packagedServer, "app/api/v1/messages/route.js"), "utf8"),
-        "messages route",
-      );
-      assert.equal(
-        fs.readFileSync(path.join(packagedServer, "chunks/openai-provider.js"), "utf8"),
-        "openai chunk",
-      );
-      assert.equal(
-        fs.readFileSync(path.join(packagedServer, "chunks/anthropic-provider.js"), "utf8"),
-        "anthropic chunk",
-      );
-    });
-  }
-
-  it("merges idempotently without removing standalone-generated files", () => {
+describe("CLI runtime dependency closure", () => {
+  it("collects the transitive closure from a hoisted layout", () => {
     const root = createTempDir();
-    const buildDistDir = path.join(root, ".next-cli-build");
+    const nmDir = createHoistedNm(root, {
+      "top-a": { "mid-b": "^1.0.0", leaf: "^1.0.0" },
+      "mid-b": { leaf: "^1.0.0" },
+      leaf: {},
+      unrelated: {},
+    });
+
+    const closure = collectRuntimeClosure(nmDir, ["top-a"]);
+
+    assert.deepEqual([...closure].sort(), ["leaf", "mid-b", "top-a"]);
+  });
+
+  it("copies roots plus hoisted transitives into the bundle", () => {
+    const root = createTempDir();
+    const nmDir = createHoistedNm(root, {
+      "socks-proxy-agent": { socks: "^2.8.3" },
+      socks: {},
+      unrelated: {},
+    });
     const cliAppDir = path.join(root, "cli-app");
-    const packagedServer = path.join(cliAppDir, ".next-cli-build", "server");
 
-    createCompleteServer(buildDistDir);
-    writeFixture(packagedServer, "standalone-only.js", "keep me");
+    const closure = copyRuntimeClosure(nmDir, cliAppDir, ["socks-proxy-agent"]);
 
-    mergeServerArtifacts(buildDistDir, cliAppDir);
-    mergeServerArtifacts(buildDistDir, cliAppDir);
-
+    assert.deepEqual([...closure].sort(), ["socks", "socks-proxy-agent"]);
     assert.equal(
-      fs.readFileSync(path.join(packagedServer, "standalone-only.js"), "utf8"),
-      "keep me",
+      fs.existsSync(path.join(cliAppDir, "node_modules", "socks-proxy-agent", "package.json")),
+      true,
     );
     assert.equal(
-      fs.readFileSync(path.join(packagedServer, "app/api/v1/messages/route.js"), "utf8"),
-      "messages route",
+      fs.existsSync(path.join(cliAppDir, "node_modules", "socks", "package.json")),
+      true,
+    );
+    assert.equal(fs.existsSync(path.join(cliAppDir, "node_modules", "unrelated")), false);
+  });
+
+  it("assertRuntimeClosure passes on a complete bundle", () => {
+    const root = createTempDir();
+    const nmDir = createHoistedNm(root, {
+      "socks-proxy-agent": { socks: "^2.8.3" },
+      socks: {},
+    });
+    const cliAppDir = path.join(root, "cli-app");
+    copyRuntimeClosure(nmDir, cliAppDir, ["socks-proxy-agent"]);
+
+    assert.doesNotThrow(() => assertRuntimeClosure(cliAppDir, ["socks-proxy-agent"]));
+  });
+
+  it("assertRuntimeClosure catches a missing deep (depth-2) transitive", () => {
+    const root = createTempDir();
+    const nmDir = createHoistedNm(root, {
+      "top-a": { "mid-b": "^1.0.0" },
+      "mid-b": { "deep-leaf": "^1.0.0" },
+      "deep-leaf": {},
+    });
+    const cliAppDir = path.join(root, "cli-app");
+    // Only copy depth 0-1: deep-leaf missing must still be caught.
+    copyPackageDir("top-a", cliAppDir, nmDir);
+    copyPackageDir("mid-b", cliAppDir, nmDir);
+
+    assert.throws(
+      () => assertRuntimeClosure(cliAppDir, ["top-a"]),
+      (error) => error.message.includes("mid-b -> deep-leaf"),
     );
   });
 
-  it("reports the missing required API route artifact path", () => {
+  it("assertRuntimeClosure fails when a hoisted transitive is dropped (the 0.5.95 socks/xml-crypto bug)", () => {
     const root = createTempDir();
-    const buildDistDir = path.join(root, ".next-cli-build");
+    const nmDir = createHoistedNm(root, {
+      "socks-proxy-agent": { "fixture-leaf": "^9.9.9" },
+      "fixture-leaf": {},
+    });
     const cliAppDir = path.join(root, "cli-app");
-
-    writeFixture(
-      path.join(buildDistDir, "server"),
-      "app/api/v1/chat/completions/route.js",
-      "chat route",
-    );
-    mergeServerArtifacts(buildDistDir, cliAppDir);
+    // Simulate the old top-level-only copy: root copied, hoisted dep missing.
+    copyPackageDir("socks-proxy-agent", cliAppDir, nmDir);
 
     assert.throws(
-      () => assertRequiredApiArtifacts(cliAppDir),
-      (error) => error.message.includes(path.join(
-        cliAppDir,
-        ".next-cli-build/server/app/api/v1/messages/route.js",
-      )),
+      () => assertRuntimeClosure(cliAppDir, ["socks-proxy-agent"]),
+      (error) => error.message.includes("socks-proxy-agent -> fixture-leaf"),
+    );
+  });
+
+  it("collectRuntimeClosure reports which hoisted package is absent", () => {
+    const root = createTempDir();
+    const nmDir = createHoistedNm(root, {
+      "socks-proxy-agent": { socks: "^2.8.3" },
+      // socks deliberately NOT installed
+    });
+
+    assert.throws(
+      () => collectRuntimeClosure(nmDir, ["socks-proxy-agent"]),
+      (error) => error.message.includes("socks"),
+    );
+  });
+
+  it("copyPackageDir throws a actionable error for a missing source", () => {
+    const root = createTempDir();
+    const nmDir = path.join(root, "node_modules");
+    fs.mkdirSync(nmDir, { recursive: true });
+
+    assert.throws(
+      () => copyPackageDir("nope-missing", path.join(root, "cli-app"), nmDir),
+      (error) => error.message.includes("nope-missing"),
     );
   });
 });

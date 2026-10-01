@@ -102,14 +102,89 @@ function copyRecursive(src, dest) {
   }
 }
 
-function copyPackageDir(pkgName, destRoot) {
-  const src = path.join(appDir, "node_modules", pkgName);
+function copyPackageDir(pkgName, destRoot, srcRoot = path.join(appDir, "node_modules")) {
+  const src = path.join(srcRoot, pkgName);
   if (!fs.existsSync(src)) {
     throw new Error(
-      `${pkgName} not found in root node_modules — run 'bun install' at the repo root first.`,
+      `${pkgName} not found in ${srcRoot} — run 'bun install' at the repo root first.`,
     );
   }
   copyRecursive(src, path.join(destRoot, "node_modules", pkgName));
+}
+
+// Resolve the full transitive closure of production dependencies for the
+// runtime roots, following each package.json `dependencies` map from a flat
+// (hoisted) node_modules layout. optionalDependencies and peerDependencies
+// are intentionally skipped: hoisting already places the satisfied ones at
+// top level, and chasing unsatisfied peers would drag in dev-only trees.
+// ponytail: no version pinning here — versions stay pinned to the manifests;
+// this only decides WHICH hoisted dirs to copy.
+function collectRuntimeClosure(srcRoot, roots) {
+  const seen = new Set();
+  const missing = [];
+  const visit = (name) => {
+    if (seen.has(name)) return;
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(srcRoot, name, "package.json"), "utf8"));
+    } catch {
+      missing.push(name);
+      return;
+    }
+    seen.add(name);
+    for (const dep of Object.keys(manifest.dependencies || {})) {
+      visit(dep);
+    }
+  };
+  for (const root of roots) visit(root);
+  if (missing.length > 0) {
+    throw new Error(
+      `Runtime dependency closure incomplete — missing in ${srcRoot}:\n` + missing.join("\n"),
+    );
+  }
+  return [...seen].sort();
+}
+
+function copyRuntimeClosure(srcRoot, destRoot, roots) {
+  const closure = collectRuntimeClosure(srcRoot, roots);
+  for (const pkg of closure) {
+    copyPackageDir(pkg, destRoot, srcRoot);
+  }
+  return closure;
+}
+
+// Verify every bundled package's `dependencies` exist inside the bundle.
+// Physical presence check (not require.resolve): resolver lookups walk up
+// parent dirs and can leak outside the bundle, giving false passes.
+function assertRuntimeClosure(destRoot, roots) {
+  const nm = path.join(destRoot, "node_modules");
+  const broken = [];
+  const queue = [...roots];
+  const visited = new Set();
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (visited.has(name)) continue;
+    visited.add(name);
+    // Physical presence check (not require.resolve): resolver lookups walk up
+    // parent dirs and can leak outside the bundle, giving false passes.
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(nm, name, "package.json"), "utf8"));
+    } catch {
+      broken.push(name);
+      continue;
+    }
+    for (const dep of Object.keys(manifest.dependencies || {})) {
+      if (!fs.existsSync(path.join(nm, dep, "package.json"))) {
+        broken.push(`${name} -> ${dep}`);
+      } else {
+        queue.push(dep);
+      }
+    }
+  }
+  if (broken.length > 0) {
+    throw new Error(`Bundled runtime node_modules missing transitive deps:\n` + broken.join("\n"));
+  }
 }
 
 function assertElysiaArtifacts() {
@@ -194,13 +269,15 @@ function buildCliPackage() {
   }
   console.log("✅ Copied server bundle\n");
 
-  // Step 5: Copy pruned runtime node_modules (root engine deps + Elysia).
+  // Step 5: Copy pruned runtime node_modules (root engine deps + transitives + Elysia).
+  // Copy follows the transitive `dependencies` closure from the hoisted root
+  // install — a top-level-only copy drops hoisted deps (socks, xml-crypto…)
+  // and the bundle dies at runtime with "Cannot find module".
   // Native/heavy leftovers (better-sqlite3, next, React dashboard libs) stay
   // out; sql.js covers SQLite, the data-dir runtime self-heals the rest.
   console.log("5️⃣  Copying pruned runtime dependencies...");
-  for (const pkg of ROOT_RUNTIME_DEPS) {
-    copyPackageDir(pkg, cliAppDir);
-  }
+  const closure = copyRuntimeClosure(path.join(appDir, "node_modules"), cliAppDir, ROOT_RUNTIME_DEPS);
+  console.log(`✅ Copied ${closure.length} packages (roots + transitives)`);
   copyRecursive(path.join(appDir, "server", "node_modules"), path.join(cliAppDir, "server", "node_modules"));
   const betterDir = path.join(cliAppDir, "node_modules", "better-sqlite3");
   if (fs.existsSync(betterDir)) {
@@ -212,7 +289,8 @@ function buildCliPackage() {
   // Step 6: Verify the bundle is launchable.
   console.log("6️⃣  Verifying bundle artifacts...");
   assertElysiaArtifacts();
-  console.log("✅ Bundle verified\n");
+  assertRuntimeClosure(cliAppDir, ROOT_RUNTIME_DEPS);
+  console.log("✅ Bundle verified (files + runtime dep closure)\n");
 
   // Step 7: Build MITM server (config driven - see cli/scripts/buildMitm.js).
   // buildMitm bundles src/mitm/server.js in place and wipes the other sources,
@@ -256,7 +334,10 @@ function buildCliPackage() {
 
 module.exports = {
   assertElysiaArtifacts,
+  assertRuntimeClosure,
+  collectRuntimeClosure,
   copyPackageDir,
+  copyRuntimeClosure,
   ROOT_RUNTIME_DEPS,
 };
 
