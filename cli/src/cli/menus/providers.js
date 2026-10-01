@@ -19,8 +19,15 @@ const PROVIDER_MODELS = {
     { id: "claude-opus-4-5-20251101" },
     { id: "claude-sonnet-4-5-20250929" },
     { id: "claude-haiku-4-5-20251001" },
+    { id: "claude-sonnet-5-5" },
+    { id: "claude-opus-5-5" },
   ],
   cx: [
+    { id: "gpt-6.1-sol" },
+    { id: "gpt-6-sol" },
+    { id: "gpt-6-luna" },
+    { id: "gpt-daybreak-blue-latest" },
+    { id: "gpt-reserve" },
     { id: "gpt-5.2-codex" },
     { id: "gpt-5.2" },
     { id: "gpt-5.1-codex-max" },
@@ -90,6 +97,8 @@ const PROVIDER_MODELS = {
     { id: "claude-sonnet-5" },
     { id: "claude-sonnet-4.5" },
     { id: "claude-haiku-4.5" },
+    { id: "claude-opus-5.5" },
+    { id: "claude-opus-5.5-thinking" },
   ],
   openai: [
     { id: "gpt-4o" },
@@ -126,6 +135,20 @@ const PROVIDER_MODELS = {
   minimax: [
     { id: "MiniMax-M2.1" },
   ],
+  muse: [
+    { id: "muse-spark-1.3" },
+    { id: "muse-spark-1.2" },
+    { id: "muse-spark-1.1" },
+  ],
+  v1m: [
+    { id: "rev-latest" },
+    { id: "v1m-decision-engine" },
+  ],
+  agnes: [
+    { id: "agnes-3.0-flash" },
+    { id: "agnes-2.5-pro" },
+    { id: "agnes-2.5-flash" },
+  ],
 };
 
 // Provider definitions
@@ -139,10 +162,14 @@ const OAUTH_PROVIDERS = {
   qwen: { id: "qwen", alias: "qw", name: "Qwen Code" },
   kiro: { id: "kiro", alias: "kr", name: "Kiro AI" },
   glm: { id: "glm", alias: "glm", name: "Zai GLM Coding" },
+  muse: { id: "muse", alias: "muse", name: "Muse (Meta Model API)" },
 };
 
 const APIKEY_PROVIDERS = {
   openrouter: { id: "openrouter", name: "OpenRouter" },
+  muse: { id: "muse", name: "Muse (Meta Model API)" },
+  v1m: { id: "v1m", name: "v1m (System One)" },
+  agnes: { id: "agnes", name: "Agnes" },
   glm: { id: "glm", name: "Zai GLM Coding" },
   minimax: { id: "minimax", name: "Minimax Coding" },
   kimi: { id: "kimi", name: "Kimi" },
@@ -400,7 +427,7 @@ async function showConnectionActions(connection, providerId, breadcrumb = []) {
  * @param {string} authType - "oauth" or "apikey"
  */
 // Providers that use Device Code Flow (terminal-based polling)
-const DEVICE_CODE_PROVIDERS = ["github", "qwen", "kiro", "glm"];
+const DEVICE_CODE_PROVIDERS = ["github", "qwen", "kiro", "glm", "muse"];
 
 /**
  * Handle adding new connection - auto-detect flow type
