@@ -241,16 +241,20 @@ async function getDispatcher(proxyUrl, insecure = false) {
       proxyDispatchers.delete(proxyDispatchers.keys().next().value);
     }
     // NOTE: never bare-import "undici" here — Bun hijacks it to its builtin.
-    // Socks pools are health-checked and managed but not routable: Bun fetch
-    // has no socks-capable proxy option and SocksProxyAgent is an http.Agent,
-    // not an undici Dispatcher. Fail loudly instead of leaking direct traffic.
-    if (/^socks[45]?h?:/i.test(normalized)) {
-      throw new Error(`Socks proxy not supported for traffic, health-check only: ${normalized}`);
+    // SOCKS5 traffic routes via undici's Socks5ProxyAgent (experimental in
+    // undici 7 — pinned exact in package.json so it can't shift under us).
+    // Plain socks4:// has no undici support: fail loudly instead of leaking
+    // direct traffic.
+    if (/^socks4a?:/i.test(normalized)) {
+      throw new Error(`SOCKS4 proxy not supported for traffic (no undici support): ${normalized}`);
     }
+    // undici only knows socks5:/socks: — normalize socks5h:// (same wire
+    // protocol, hostname resolved remotely) so it doesn't throw inside.
+    const dispatcherUrl = normalized.replace(/^socks5h:/i, "socks5:");
     const { Agent, ProxyAgent } = await import("../../src/lib/network/undici.js");
     const connect = insecure ? { rejectUnauthorized: false } : undefined;
     const dispatcher = normalized
-      ? new ProxyAgent({ uri: normalized, ...(insecure ? { requestTls: connect } : {}) })
+      ? new ProxyAgent({ uri: dispatcherUrl, ...(insecure ? { requestTls: connect } : {}) })
       : new Agent({ connect });
     proxyDispatchers.set(key, dispatcher);
   }

@@ -47,12 +47,14 @@ upstream ke dalamnya (compose, bukan pilih salah satu).
    Titik yang sudah patuh: `open-sse/utils/proxyFetch.js`,
    `open-sse/translator/concerns/image.js`, `src/lib/network/proxyTest.js`.
    Bare `from "undici"` di tree itu = bug; grep sebelum commit.
-5. **SOCKS = health-check only.** `SocksProxyAgent` itu `http.Agent`, bukan
-   undici Dispatcher, dan Bun fetch tidak punya opsi proxy SOCKS. Aturannya:
-   pool SOCKS boleh di-health-check dan di-manage (`proxyTest.js`
-   `checkViaSocks` via `node:https`), tapi `proxyFetch.js#getDispatcher`
-   wajib throw untuk scheme `socks*` agar traffic tidak bocor direct.
-   Jangan "perbaiki" dengan me-routing SOCKS via undici.
+5. **SOCKS5 = routed traffic, SOCKS4 = unsupported.** SOCKS5 traffic routes
+   via undici's `Socks5ProxyAgent` in `proxyFetch.js#getDispatcher`
+   (experimental in undici 7 — `undici` is pinned exact in `package.json`,
+   never `^`). `socks5h://` is normalized to `socks5://` before dispatch.
+   Plain `socks4://` has no undici support: it throws loudly, never leaks
+   direct. `proxyTest.js` `checkViaSocks` still health-checks all SOCKS
+   schemes via `node:https` + `socks-proxy-agent`.
+   Dijaga oleh `tests/unit/socks-traffic-routing.test.js`.
 6. **Launcher mengenali Bun.** `cli/cli.js` kill-matcher mencakup proses
    `bun … 9router … index.ts`; `cli/hooks/postinstall.js` cek `bun --version`.
 7. **Docker = image Elysia.** `Dockerfile` (base `oven/bun`, tanpa Node/Next),
