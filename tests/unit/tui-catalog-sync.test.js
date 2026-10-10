@@ -68,3 +68,37 @@ describe("TUI catalog sync (v0.5.95)", () => {
     expect(typeof sel.selectModelFromList).toBe("function");
   });
 });
+
+describe("TUI catalog sync (v0.5.99)", () => {
+  it("lists minimax-code (OAuth) + bedrock/bedrock-xai (API key) providers", () => {
+    expect(tuiProviders).toContain('"minimax-code": { id: "minimax-code"');
+    expect(tuiProviders).toContain('bedrock: { id: "bedrock"');
+    expect(tuiProviders).toContain('"bedrock-xai": { id: "bedrock-xai"');
+  });
+
+  it("modelSelector knows the new provider aliases", () => {
+    for (const alias of ['mm:', 'bedrock:', '"bedrock-xai":']) {
+      expect(modelSelector).toContain(alias);
+    }
+  });
+
+  it("carries the new flagship models per alias", () => {
+    expect(block(tuiProviders, "mm")).toContain("MiniMax-M3");
+    expect(block(tuiProviders, "bedrock")).toContain("us.anthropic.claude-sonnet-5");
+    expect(block(tuiProviders, '"bedrock-xai"')).toContain("us.xai.grok-4.6");
+  });
+
+  it("new TUI model ids exist in the open-sse registry", () => {
+    const ids = (file) =>
+      [...readFileSync(join(here, "../../open-sse/providers/registry", file), "utf8")
+        .matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
+    const registry = new Set([
+      ...ids("minimax-code.js"), ...ids("bedrock.js"), ...ids("bedrock-xai.js"),
+    ]);
+    for (const id of [
+      "MiniMax-M3", "us.anthropic.claude-sonnet-5", "us.xai.grok-4.6",
+    ]) {
+      expect(registry.has(id), `${id} missing from registry`).toBe(true);
+    }
+  });
+});

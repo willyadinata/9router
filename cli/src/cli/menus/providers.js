@@ -74,6 +74,14 @@ const PROVIDER_MODELS = {
     { id: "gemini-3.5-flash-extra-low" },
     { id: "gemini-pro-agent" },
     { id: "gemini-3.1-pro-low" },
+    { id: "claude-sonnet-5-5" },
+    { id: "claude-sonnet-5-5-low" },
+    { id: "claude-sonnet-5-5-medium" },
+    { id: "claude-sonnet-5-5-high" },
+    { id: "claude-opus-5-5" },
+    { id: "claude-opus-5-5-low" },
+    { id: "claude-opus-5-5-medium" },
+    { id: "claude-opus-5-5-high" },
     { id: "claude-sonnet-4-6" },
     { id: "claude-opus-4-6-thinking" },
     { id: "gpt-oss-120b-medium" },
@@ -149,6 +157,20 @@ const PROVIDER_MODELS = {
     { id: "agnes-2.5-pro" },
     { id: "agnes-2.5-flash" },
   ],
+  mm: [
+    { id: "MiniMax-M3.1-Flash-Preview" },
+    { id: "MiniMax-M3" },
+    { id: "MiniMax-M2.7" },
+    { id: "MiniMax-M2.7-highspeed" },
+  ],
+  bedrock: [
+    { id: "us.anthropic.claude-opus-5" },
+    { id: "us.anthropic.claude-sonnet-5" },
+    { id: "us.anthropic.claude-sonnet-4-6" },
+  ],
+  "bedrock-xai": [
+    { id: "us.xai.grok-4.6" },
+  ],
 };
 
 // Provider definitions
@@ -163,6 +185,7 @@ const OAUTH_PROVIDERS = {
   kiro: { id: "kiro", alias: "kr", name: "Kiro AI" },
   glm: { id: "glm", alias: "glm", name: "Zai GLM Coding" },
   muse: { id: "muse", alias: "muse", name: "Muse (Meta Model API)" },
+  "minimax-code": { id: "minimax-code", alias: "mm", name: "MiniMax Code" },
 };
 
 const APIKEY_PROVIDERS = {
@@ -172,6 +195,8 @@ const APIKEY_PROVIDERS = {
   agnes: { id: "agnes", name: "Agnes" },
   glm: { id: "glm", name: "Zai GLM Coding" },
   minimax: { id: "minimax", name: "Minimax Coding" },
+  bedrock: { id: "bedrock", name: "AWS Bedrock" },
+  "bedrock-xai": { id: "bedrock-xai", name: "Bedrock Grok" },
   kimi: { id: "kimi", name: "Kimi" },
   openai: { id: "openai", name: "OpenAI" },
   anthropic: { id: "anthropic", name: "Anthropic" },
