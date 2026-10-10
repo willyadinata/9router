@@ -135,3 +135,16 @@ try {
 let count = 0;
 for await (const f of allSrc(SRC)) count++;
 console.log(`ui synced: ${count} source files, ${[...renamed.values()].reduce((n, s) => n + s.size, 0)} renamed to .jsx`);
+
+// web/src/shared/constants/config.js reads ../../../package.json for the app
+// version — at web depth that resolves to web/package.json, so keep it in
+// sync with the root (same class of fix as server/package.json in
+// sync-vendor.ts; web/ was stuck at 0.5.86 since the Elysia migration).
+const rootPkg = JSON.parse(await readFile(join(REPO, "package.json"), "utf8"));
+const webPkgPath = join(ROOT, "package.json");
+const webPkg = JSON.parse(await readFile(webPkgPath, "utf8"));
+if (webPkg.version !== rootPkg.version) {
+  webPkg.version = rootPkg.version;
+  await writeFile(webPkgPath, JSON.stringify(webPkg, null, 2) + "\n");
+  console.log(`synced web version -> ${rootPkg.version}`);
+}
