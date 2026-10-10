@@ -113,7 +113,7 @@ const app = new Elysia()
 
 app.listen({ port: PORT, hostname: HOSTNAME }, ({ port, hostname }) => {
   const s = routeStats();
-  console.log(`[9router-elysia] listening on http://${hostname}:${port} (${s.files} route files, ${s.methods} handlers)`);
+  console.log(`[9router-plus] listening on http://${hostname}:${port} (${s.files} route files, ${s.methods} handlers)`);
 });
 
 function shutdown() {
