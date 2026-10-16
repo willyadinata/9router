@@ -4,7 +4,7 @@ const { clearScreen } = require("./display");
 
 // Provider alias order: OAuth first, then Free, then API Key
 const PROVIDER_ALIAS_ORDER = [
-  "cc", "ag", "cx", "if", "qw", "gc", "gh", "kr", "oc", "mm",
+  "cc", "ag", "cx", "if", "qw", "gc", "gh", "kr", "oc", "mm", "nous",
   "openrouter", "glm", "kimi", "minimax", "openai", "anthropic", "gemini"
 ];
 
@@ -27,6 +27,7 @@ const PROVIDER_ALIAS_NAMES = {
   v1m: "v1m (System One)",
   agnes: "Agnes",
   mm: "MiniMax Code",
+  nous: "Nous Research",
   bedrock: "AWS Bedrock",
   "bedrock-xai": "Bedrock Grok",
   minimax: "Minimax Coding",
@@ -58,6 +59,7 @@ const PROVIDER_ID_TO_ALIAS = {
   v1m: "v1m",
   agnes: "agnes",
   "minimax-code": "mm",
+  nous: "nous",
   bedrock: "bedrock",
   "bedrock-xai": "bedrock-xai",
   trae: "trae",

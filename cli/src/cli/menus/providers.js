@@ -60,6 +60,7 @@ const PROVIDER_MODELS = {
     { id: "glm-4.7" },
   ],
   ag: [
+    { id: "gemini-4-argon-high" },
     { id: "gemini-3.8-flash-high" },
     { id: "gemini-3.8-flash-medium" },
     { id: "gemini-3.8-flash-low" },
@@ -121,6 +122,7 @@ const PROVIDER_MODELS = {
     { id: "claude-3-5-sonnet-20241022" },
   ],
   gemini: [
+    { id: "gemini-4-argon" },
     { id: "gemini-3.8-flash" },
     { id: "gemini-3.7-flash" },
     { id: "gemini-3.6-flash" },
@@ -171,6 +173,12 @@ const PROVIDER_MODELS = {
   "bedrock-xai": [
     { id: "us.xai.grok-4.6" },
   ],
+  nous: [
+    { id: "meituan/longcat-2.0:free" },
+    { id: "stepfun/step-5-preview:free" },
+    { id: "poolside/laguna-xs-2.1:free" },
+    { id: "stealth/missingno" },
+  ],
 };
 
 // Provider definitions
@@ -186,6 +194,7 @@ const OAUTH_PROVIDERS = {
   glm: { id: "glm", alias: "glm", name: "Zai GLM Coding" },
   muse: { id: "muse", alias: "muse", name: "Muse (Meta Model API)" },
   "minimax-code": { id: "minimax-code", alias: "mm", name: "MiniMax Code" },
+  nous: { id: "nous", alias: "nous", name: "Nous Research" },
 };
 
 const APIKEY_PROVIDERS = {
@@ -197,6 +206,7 @@ const APIKEY_PROVIDERS = {
   minimax: { id: "minimax", name: "Minimax Coding" },
   bedrock: { id: "bedrock", name: "AWS Bedrock" },
   "bedrock-xai": { id: "bedrock-xai", name: "Bedrock Grok" },
+  nous: { id: "nous", name: "Nous Research" },
   kimi: { id: "kimi", name: "Kimi" },
   openai: { id: "openai", name: "OpenAI" },
   anthropic: { id: "anthropic", name: "Anthropic" },
@@ -452,7 +462,7 @@ async function showConnectionActions(connection, providerId, breadcrumb = []) {
  * @param {string} authType - "oauth" or "apikey"
  */
 // Providers that use Device Code Flow (terminal-based polling)
-const DEVICE_CODE_PROVIDERS = ["github", "qwen", "kiro", "glm", "muse"];
+const DEVICE_CODE_PROVIDERS = ["github", "qwen", "kiro", "glm", "muse", "nous"];
 
 /**
  * Handle adding new connection - auto-detect flow type

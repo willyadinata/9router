@@ -102,3 +102,40 @@ describe("TUI catalog sync (v0.5.99)", () => {
     }
   });
 });
+
+describe("TUI catalog sync (v0.5.104)", () => {
+  it("lists nous (OAuth device-flow + API key) provider", () => {
+    expect(tuiProviders).toContain('nous: { id: "nous"');
+  });
+
+  it("routes nous OAuth through device code flow", () => {
+    expect(tuiProviders).toMatch(/DEVICE_CODE_PROVIDERS = \[[^\]]*"nous"[^\]]*\]/);
+  });
+
+  it("modelSelector knows the nous alias", () => {
+    expect(modelSelector).toContain('nous:');
+  });
+
+  it("carries the new flagship models per alias", () => {
+    expect(block(tuiProviders, "nous")).toContain("meituan/longcat-2.0:free");
+    expect(block(tuiProviders, "nous")).toContain("stealth/missingno");
+    expect(block(tuiProviders, "gemini")).toContain("gemini-4-argon");
+    expect(block(tuiProviders, "ag")).toContain("gemini-4-argon-high");
+  });
+
+  it("new TUI model ids exist in the open-sse registry", () => {
+    // Nous formats entries across lines (`{\n id:`) so match bare `id:` here.
+    const ids = (file) =>
+      [...readFileSync(join(here, "../../open-sse/providers/registry", file), "utf8")
+        .matchAll(/id: "([^"]+)"/g)].map((m) => m[1]);
+    const registry = new Set([
+      ...ids("nous.js"), ...ids("gemini.js"), ...ids("antigravity.js"),
+    ]);
+    for (const id of [
+      "meituan/longcat-2.0:free", "stealth/missingno",
+      "gemini-4-argon", "gemini-4-argon-high",
+    ]) {
+      expect(registry.has(id), `${id} missing from registry`).toBe(true);
+    }
+  });
+});
