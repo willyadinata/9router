@@ -139,3 +139,34 @@ describe("TUI catalog sync (v0.5.104)", () => {
     }
   });
 });
+
+describe("TUI catalog sync (v0.5.111)", () => {
+  it("lists runcrate (API key) under its rc alias", () => {
+    expect(tuiProviders).toContain('runcrate: { id: "runcrate", alias: "rc"');
+  });
+
+  it("modelSelector knows the rc alias", () => {
+    expect(modelSelector).toContain('rc: "Runcrate"');
+    expect(modelSelector).toContain('runcrate: "rc"');
+  });
+
+  it("carries the runcrate models verbatim", () => {
+    expect(block(tuiProviders, "rc")).toContain("deepseek-ai/DeepSeek-V4.1-Flash");
+    expect(block(tuiProviders, "rc")).toContain("zai-org/GLM-5.3");
+    expect(block(tuiProviders, "rc")).toContain("openai/gpt-oss-120b");
+  });
+
+  it("new TUI model ids exist in the open-sse registry", () => {
+    const ids = (file) =>
+      [...readFileSync(join(here, "../../open-sse/providers/registry", file), "utf8")
+        .matchAll(/id: "([^"]+)"/g)].map((m) => m[1]);
+    const registry = new Set(ids("runcrate.js"));
+    for (const id of [
+      "deepseek-ai/DeepSeek-V4.1-Flash", "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "zai-org/GLM-5.3", "zai-org/GLM-5.3-Flash",
+      "Qwen/Qwen3.8-Flash", "openai/gpt-oss-120b",
+    ]) {
+      expect(registry.has(id), `${id} missing from registry`).toBe(true);
+    }
+  });
+});

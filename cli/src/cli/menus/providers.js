@@ -179,6 +179,14 @@ const PROVIDER_MODELS = {
     { id: "poolside/laguna-xs-2.1:free" },
     { id: "stealth/missingno" },
   ],
+  rc: [
+    { id: "deepseek-ai/DeepSeek-V4.1-Flash" },
+    { id: "deepseek-ai/DeepSeek-V4.1-Flash-1017" },
+    { id: "zai-org/GLM-5.3" },
+    { id: "zai-org/GLM-5.3-Flash" },
+    { id: "Qwen/Qwen3.8-Flash" },
+    { id: "openai/gpt-oss-120b" },
+  ],
 };
 
 // Provider definitions
@@ -207,6 +215,7 @@ const APIKEY_PROVIDERS = {
   bedrock: { id: "bedrock", name: "AWS Bedrock" },
   "bedrock-xai": { id: "bedrock-xai", name: "Bedrock Grok" },
   nous: { id: "nous", name: "Nous Research" },
+  runcrate: { id: "runcrate", alias: "rc", name: "Runcrate" },
   kimi: { id: "kimi", name: "Kimi" },
   openai: { id: "openai", name: "OpenAI" },
   anthropic: { id: "anthropic", name: "Anthropic" },
