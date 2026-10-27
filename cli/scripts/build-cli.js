@@ -16,6 +16,7 @@ const cliAppDir = process.env.NINEROUTER_CLI_APP_DIR || path.join(cliDir, "app")
 // the Dockerfile runner stage — versions stay pinned to the root manifest).
 const ROOT_RUNTIME_DEPS = [
   "@node-saml/node-saml",
+  "ajv",
   "bcryptjs",
   "chalk",
   "confbox",

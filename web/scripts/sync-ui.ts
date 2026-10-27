@@ -3,7 +3,7 @@
 // upstream or editing src/**. Hand-written files (next-compat, router, main,
 // index.html, vite.config) are never touched by this script.
 import { rm, mkdir, cp, readdir, readFile, writeFile, rename, stat } from "node:fs/promises";
-import { join, dirname, basename, extname } from "node:path";
+import { join, dirname, basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -94,22 +94,15 @@ async function* allSrc(dir) {
 for await (const f of allSrc(SRC)) {
   if (basename(f) === "next-compat.jsx" || basename(f) === "router.jsx" || basename(f) === "main.jsx") continue;
   const set = renamed.get(dirname(f));
-  if (!set || set.size === 0) continue;
   let s = await readFile(f, "utf8");
-  let changed = false;
-  for (const base of set) {
-    const needle1 = `./${base}.js`;
-    const needle2 = `../${base}.js`;
-    if (s.includes(needle1) || s.includes(needle2)) {
-      // only rewrite when the target file was actually renamed (same-dir or parent-dir hit)
-      changed = true;
-    }
-  }
-  if (changed) {
-    s = s.replace(/(\.\.?\/[^"'`]*?)\.js(["'`])/g, (m, p, q) => {
-      const name = p.split("/").pop();
-      return set.has(name) || [...renamed.values()].some((st) => st.has(name)) ? `${p}.jsx${q}` : m;
-    });
+  const updated = s.replace(/(["'`])(\.\.?\/[^"'`]+)\.js\1/g, (match, quote, specifier) => {
+    const target = resolve(dirname(f), specifier);
+    return renamed.get(dirname(target))?.has(basename(target))
+      ? `${quote}${specifier}.jsx${quote}`
+      : match;
+  });
+  if (updated !== s) {
+    s = updated;
     await writeFile(f, s);
   }
 }

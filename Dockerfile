@@ -1,8 +1,15 @@
 # 9router+ (Elysia + Bun + Vite) — replaces the Next.js standalone image.
 # syntax=docker/dockerfile:1.7
+ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
+ARG APP_VERSION=unknown
 ARG BUN_IMAGE=oven/bun:1.4.2-alpine
 FROM ${BUN_IMAGE} AS base
+ARG ALPINE_MIRROR
 WORKDIR /app
+
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
 FROM base AS deps
 # No toolchain: better-sqlite3 is optional (prebuild or skip) — bun:sqlite and
@@ -13,7 +20,7 @@ COPY web/package.json web/bun.lock ./web/
 # Runtime image only needs the engine deps — prune Next.js, the React
 # dashboard libs, and unused middleware from the root manifest (versions stay
 # pinned to the root package.json; fresh resolve since the set differs).
-RUN bun -e 'const p = await Bun.file("package.json").json(); const keep = ["@node-saml/node-saml","bcryptjs","chalk","confbox","jose","node-forge","open","ora","socks-proxy-agent","sql.js","undici","uuid"]; p.dependencies = Object.fromEntries(Object.entries(p.dependencies || {}).filter(([k]) => keep.includes(k))); delete p.devDependencies; delete p.optionalDependencies; await Bun.write("package.json", JSON.stringify(p, null, 2));'
+RUN bun -e 'const p = await Bun.file("package.json").json(); const keep = ["@node-saml/node-saml","ajv","bcryptjs","chalk","confbox","jose","node-forge","open","ora","socks-proxy-agent","sql.js","undici","uuid"]; const available = { ...(p.dependencies || {}), ...(p.optionalDependencies || {}) }; p.dependencies = Object.fromEntries(Object.entries(available).filter(([k]) => keep.includes(k))); delete p.devDependencies; delete p.optionalDependencies; await Bun.write("package.json", JSON.stringify(p, null, 2));'
 RUN bun install
 RUN cd server && bun install --frozen-lockfile
 RUN cd web && bun install --frozen-lockfile
@@ -32,7 +39,12 @@ RUN cd web && bun run build
 RUN cd server && bun run sync
 
 FROM ${BUN_IMAGE} AS runner
+ARG ALPINE_MIRROR
+ARG APP_VERSION
 WORKDIR /app
+
+LABEL org.opencontainers.image.title="9router+" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 ENV NODE_ENV=production
 ENV PORT=20128
@@ -51,9 +63,14 @@ COPY --from=builder /app/web/dist ./web/dist
 COPY --from=builder /app/server/vendor ./server/vendor
 COPY --from=builder /app/server/src/routes-manifest.ts ./server/src/routes-manifest.ts
 
-RUN mkdir -p /app/data /app/data-home && \
+# ffmpeg converts audio for Codex STT and local TTS.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache ffmpeg && \
+    mkdir -p /app/data /app/data-home && \
     chown -R bun:bun /app && \
-    ln -sf /app/data-home /home/bun/.9router 2>/dev/null || true
+    { ln -sf /app/data-home /home/bun/.9router 2>/dev/null || true; }
 
 USER bun
 EXPOSE 20128

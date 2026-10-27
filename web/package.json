@@ -1,6 +1,6 @@
 {
   "name": "9router-web",
-  "version": "0.5.104",
+  "version": "0.5.109",
   "description": "9Router dashboard SPA (pure React + Vite) — replaces the Next.js frontend",
   "private": true,
   "type": "module",
@@ -19,10 +19,10 @@
     "@xyflow/react": "^12.10.1",
     "marked": "^18.0.1",
     "prop-types": "^15.8.1",
-    "undici": "^7.19.2",
+    "undici": "7.30.1",
     "uuid": "^13.0.0",
     "material-symbols": "^0.44.6",
-    "monaco-editor": "^0.55.1",
+    "monaco-editor": "^0.57.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-is": "^16.13.1",
@@ -35,5 +35,9 @@
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4.1.18",
     "vite": "^7.2.4"
+  },
+  "overrides": {
+    "dompurify": "^3.4.17",
+    "ip-address": "^10.7.4"
   }
 }
