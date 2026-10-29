@@ -24,6 +24,7 @@ const PROVIDER_MODELS = {
   ],
   cx: [
     { id: "gpt-6.1-sol" },
+    { id: "gpt-6.1-terra" },
     { id: "gpt-6-sol" },
     { id: "gpt-6-luna" },
     { id: "gpt-daybreak-blue-latest" },
@@ -187,6 +188,10 @@ const PROVIDER_MODELS = {
     { id: "Qwen/Qwen3.8-Flash" },
     { id: "openai/gpt-oss-120b" },
   ],
+  nace: [
+    { id: "drex-max" },
+    { id: "drex-v2.0" },
+  ],
 };
 
 // Provider definitions
@@ -216,6 +221,7 @@ const APIKEY_PROVIDERS = {
   "bedrock-xai": { id: "bedrock-xai", name: "Bedrock Grok" },
   nous: { id: "nous", name: "Nous Research" },
   runcrate: { id: "runcrate", alias: "rc", name: "Runcrate" },
+  nace: { id: "nace", alias: "nace", name: "Nace Drex" },
   kimi: { id: "kimi", name: "Kimi" },
   openai: { id: "openai", name: "OpenAI" },
   anthropic: { id: "anthropic", name: "Anthropic" },

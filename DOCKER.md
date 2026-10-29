@@ -137,3 +137,6 @@ http://localhost:20145/dashboard for the UI.
   MITM-in-Docker is unsupported (same as before — it was host-only).
 - `better-sqlite3` is intentionally absent from the image; the driver chain
   uses `bun:sqlite` with the `sql.js` fallback.
+- `wreq-js` and `playwright-core` are devDependencies for native installs, but
+  the image bakes them into `/app/node_modules` (deps stage) so lazyRuntime.js
+  resolves them without a runtime npm download (#5245).

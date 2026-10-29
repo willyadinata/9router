@@ -140,6 +140,33 @@ describe("TUI catalog sync (v0.5.104)", () => {
   });
 });
 
+describe("TUI catalog sync (v0.5.112)", () => {
+  it("lists nace (API key) under its nace alias", () => {
+    expect(tuiProviders).toContain('nace: { id: "nace", alias: "nace"');
+  });
+
+  it("modelSelector knows the nace alias", () => {
+    expect(modelSelector).toContain('nace: "Nace Drex"');
+    expect(modelSelector).toContain('nace: "nace"');
+  });
+
+  it("carries the new flagship models per alias", () => {
+    expect(block(tuiProviders, "nace")).toContain("drex-max");
+    expect(block(tuiProviders, "nace")).toContain("drex-v2.0");
+    expect(block(tuiProviders, "cx")).toContain("gpt-6.1-terra");
+  });
+
+  it("new TUI model ids exist in the open-sse registry", () => {
+    const ids = (file) =>
+      [...readFileSync(join(here, "../../open-sse/providers/registry", file), "utf8")
+        .matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1]);
+    const registry = new Set([...ids("nace.js"), ...ids("codex.js")]);
+    for (const id of ["drex-max", "drex-v2.0", "gpt-6.1-terra"]) {
+      expect(registry.has(id), `${id} missing from registry`).toBe(true);
+    }
+  });
+});
+
 describe("TUI catalog sync (v0.5.111)", () => {
   it("lists runcrate (API key) under its rc alias", () => {
     expect(tuiProviders).toContain('runcrate: { id: "runcrate", alias: "rc"');
