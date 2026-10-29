@@ -20,7 +20,10 @@ COPY web/package.json web/bun.lock ./web/
 # Runtime image only needs the engine deps — prune Next.js, the React
 # dashboard libs, and unused middleware from the root manifest (versions stay
 # pinned to the root package.json; fresh resolve since the set differs).
-RUN bun -e 'const p = await Bun.file("package.json").json(); const keep = ["@node-saml/node-saml","ajv","bcryptjs","chalk","confbox","jose","node-forge","open","ora","socks-proxy-agent","sql.js","undici","uuid"]; const available = { ...(p.dependencies || {}), ...(p.optionalDependencies || {}) }; p.dependencies = Object.fromEntries(Object.entries(available).filter(([k]) => keep.includes(k))); delete p.devDependencies; delete p.optionalDependencies; await Bun.write("package.json", JSON.stringify(p, null, 2));'
+# wreq-js + playwright-core are devDependencies that lazyRuntime.js loads on
+# demand; baking them here keeps the image offline-capable and skips the
+# runtime npm install path (#5245).
+RUN bun -e 'const p = await Bun.file("package.json").json(); const keep = ["@node-saml/node-saml","ajv","bcryptjs","chalk","confbox","jose","node-forge","open","ora","socks-proxy-agent","sql.js","undici","uuid"]; const lazy = ["playwright-core","wreq-js"]; const available = { ...(p.dependencies || {}), ...(p.optionalDependencies || {}), ...(p.devDependencies || {}) }; p.dependencies = Object.fromEntries(Object.entries(available).filter(([k]) => keep.includes(k) || lazy.includes(k))); delete p.devDependencies; delete p.optionalDependencies; await Bun.write("package.json", JSON.stringify(p, null, 2));'
 RUN bun install
 RUN cd server && bun install --frozen-lockfile
 RUN cd web && bun install --frozen-lockfile
