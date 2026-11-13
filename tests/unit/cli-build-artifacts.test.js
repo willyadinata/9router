@@ -19,6 +19,8 @@ const {
   collectRuntimeClosure,
   copyPackageDir,
   copyRuntimeClosure,
+  copyDeepSeekPowFiles,
+  assertDeepSeekPowFiles,
 } = require("../../cli/scripts/build-cli.js");
 
 const tempDirs = [];
@@ -171,6 +173,50 @@ describe("CLI runtime dependency closure", () => {
     assert.throws(
       () => copyPackageDir("nope-missing", path.join(root, "cli-app"), nmDir),
       (error) => error.message.includes("nope-missing"),
+    );
+  });
+});
+
+describe("CLI build DeepSeek PoW worker files", () => {
+  function createPoWSource(appDir) {
+    writeFixture(path.join(appDir, "open-sse/lib"), "deepseek-pow-worker.mjs", "worker");
+    writeFixture(path.join(appDir, "open-sse/lib"), "deepseek-pow-hash.js", "hash");
+  }
+
+  it("copies worker and hash next to each other (standalone tracing drops the worker's import)", () => {
+    const root = createTempDir();
+    const appDir = path.join(root, "9router");
+    const cliAppDir = path.join(root, "cli-app");
+    createPoWSource(appDir);
+    // What standalone tracing ships today: worker only.
+    writeFixture(path.join(cliAppDir, "open-sse/lib"), "deepseek-pow-worker.mjs", "worker");
+
+    copyDeepSeekPowFiles(appDir, cliAppDir);
+    assertDeepSeekPowFiles(cliAppDir);
+
+    assert.equal(
+      fs.readFileSync(path.join(cliAppDir, "open-sse/lib/deepseek-pow-hash.js"), "utf8"),
+      "hash",
+    );
+  });
+
+  it("fails loudly when a PoW source file is missing", () => {
+    const root = createTempDir();
+    const appDir = path.join(root, "9router");
+    const cliAppDir = path.join(root, "cli-app");
+    writeFixture(path.join(appDir, "open-sse/lib"), "deepseek-pow-worker.mjs", "worker");
+
+    assert.throws(() => copyDeepSeekPowFiles(appDir, cliAppDir), /deepseek-pow-hash\.js/);
+  });
+
+  it("reports the missing PoW file path", () => {
+    const root = createTempDir();
+    const cliAppDir = path.join(root, "cli-app");
+    writeFixture(path.join(cliAppDir, "open-sse/lib"), "deepseek-pow-worker.mjs", "worker");
+
+    assert.throws(
+      () => assertDeepSeekPowFiles(cliAppDir),
+      (error) => error.message.includes(path.join(cliAppDir, "open-sse/lib/deepseek-pow-hash.js")),
     );
   });
 });

@@ -197,3 +197,20 @@ describe("TUI catalog sync (v0.5.111)", () => {
     }
   });
 });
+
+describe("TUI catalog sync (v0.5.119)", () => {
+  it("carries the new Claude models in the cc presets", () => {
+    expect(block(tuiProviders, "cc")).toContain("claude-fable-5-2");
+    expect(block(tuiProviders, "cc")).toContain("claude-haiku-5-5");
+  });
+
+  it("new TUI model ids exist in the claude registry", () => {
+    const ids = (file) =>
+      [...readFileSync(join(here, "../../open-sse/providers/registry", file), "utf8")
+        .matchAll(/id: "([^"]+)"/g)].map((m) => m[1]);
+    const registry = new Set(ids("claude.js"));
+    for (const id of ["claude-fable-5-2", "claude-haiku-5-5"]) {
+      expect(registry.has(id), `${id} missing from registry`).toBe(true);
+    }
+  });
+});

@@ -16,11 +16,13 @@ const COLORS = {
 // Provider models - static config (synced from open-sse/config/providerModels.js)
 const PROVIDER_MODELS = {
   cc: [
+    { id: "claude-fable-5-2" },
     { id: "claude-opus-4-5-20251101" },
     { id: "claude-sonnet-4-5-20250929" },
     { id: "claude-haiku-4-5-20251001" },
     { id: "claude-sonnet-5-5" },
     { id: "claude-opus-5-5" },
+    { id: "claude-haiku-5-5" },
   ],
   cx: [
     { id: "gpt-6.1-sol" },
