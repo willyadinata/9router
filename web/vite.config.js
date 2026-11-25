@@ -42,6 +42,10 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       emptyOutDir: true,
       chunkSizeWarningLimit: 2000,
+      // open-sse/providers/shared.js named-imports from the MITM module, which
+      // is CJS (it is require()d by the MITM bundle). Webpack interops that for
+      // free; rollup only does for files matching commonjsOptions.include.
+      commonjsOptions: { include: [/node_modules/, /src[\\/]mitm[\\/]antigravityIdeVersion\.js$/] },
     },
   };
 });
